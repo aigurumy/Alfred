@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+dist-packager/
+backup-before-file-upload/
+*.log
+.DS_Store
+temp_script.vbs
+*.vbs
+.env
+openai_key.txt
+desktop.ini
+package-lock.json
+
+# Sensitive API keys - never commit this file
+config.js

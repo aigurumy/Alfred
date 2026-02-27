@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Webhook Endpoint</title>
+</head>
+<body>
+    <h1>Test Webhook Endpoint</h1>
+    <button onclick="testWebhook()">Test Webhook Endpoint</button>
+    <pre id="result"></pre>
+
+    <script>
+        async function testWebhook() {
+            const resultEl = document.getElementById('result');
+            resultEl.textContent = 'Testing...';
+            
+            try {
+                const response = await fetch('https://ibipazkspglvzrdzngdo.supabase.co/functions/v1/quick-task', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ test: true })
+                });
+                
+                const text = await response.text();
+                resultEl.textContent = `Status: ${response.status}\nResponse: ${text}`;
+            } catch (error) {
+                resultEl.textContent = `Error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

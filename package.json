@@ -1,0 +1,99 @@
+{
+  "name": "alfred",
+  "version": "1.0.0",
+  "description": "Alfred - Your AI-powered desktop assistant that helps with writing by typing directly into Word",
+  "main": "main.js",
+  "scripts": {
+    "dev": "electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:portable": "electron-builder --win portable",
+    "build:dir": "electron-builder --win --dir",
+    "start": "electron ."
+  },
+  "keywords": [
+    "ai",
+    "writing",
+    "assistant",
+    "word",
+    "automation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.97.0",
+    "mammoth": "^1.11.0",
+    "openai": "^4.20.0",
+    "pdf2json": "^4.0.2"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "png-to-ico": "^3.0.1"
+  },
+  "build": {
+    "appId": "com.alfred.app",
+    "productName": "Alfred",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "dashboard-preload.js",
+      "supabase-client.js",
+      "index.html",
+      "dashboard.html",
+      "renderer.js",
+      "Alfred Official Logo.png",
+      "Alfred Official Logo.ico",
+      "node_modules/**/*",
+      "!node_modules/.cache/**/*",
+      "!dist/**/*",
+      "!dist-packager/**/*",
+      "!backup-before-file-upload/**/*",
+      "!supabase/**/*",
+      "!*.md",
+      "!test-*.html"
+    ],
+    "protocols": [
+      {
+        "name": "Alfred",
+        "schemes": [
+          "alfred"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "Alfred Official Logo.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "publisherName": "Alfred",
+      "verifyUpdateCodeSignature": false,
+      "signingHashAlgorithms": null,
+      "forceCodeSigning": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "portable": {
+      "artifactName": "Alfred-Portable.exe"
+    }
+  }
+}

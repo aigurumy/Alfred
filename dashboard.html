@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alfred</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d0d12;
+      color: white;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* ── Titlebar ─────────────────────────────────────────────────────────── */
+    .titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 44px;
+      padding: 0 16px;
+      background: rgba(15,15,20,0.95);
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      -webkit-app-region: drag;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 10;
+    }
+    .titlebar-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .titlebar-logo { width: 22px; height: 22px; object-fit: contain; }
+    .titlebar-name { font-size: 15px; font-weight: 600; color: white; }
+    .titlebar-profile {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-right: 8px;
+      -webkit-app-region: no-drag;
+    }
+    .profile-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid rgba(255,255,255,0.2);
+      background: rgba(139,92,246,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: white;
+      flex-shrink: 0;
+    }
+    .profile-avatar img {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+    .profile-email {
+      font-size: 12px;
+      color: rgba(255,255,255,0.6);
+      max-width: 150px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .titlebar-controls {
+      display: flex;
+      gap: 4px;
+      -webkit-app-region: no-drag;
+    }
+    .win-btn {
+      width: 30px; height: 30px; border: none; border-radius: 6px;
+      background: transparent; color: rgba(255,255,255,0.5);
+      cursor: pointer; font-size: 15px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
+    }
+    .win-btn:hover { background: rgba(255,255,255,0.08); color: white; }
+    .win-btn.close:hover { background: rgba(239,68,68,0.8); color: white; }
+
+    /* ── Layout ───────────────────────────────────────────────────────────── */
+    .layout {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 44px);
+    }
+
+    /* ── Main content ─────────────────────────────────────────────────────── */
+    .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+    .content-topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 24px; border-bottom: 1px solid rgba(255,255,255,0.07);
+      flex-shrink: 0;
+      gap: 16px;
+    }
+    .content-topbar-left {
+      display: flex; align-items: center; gap: 16px;
+      flex: 1;
+    }
+    .content-topbar-right {
+      display: flex; align-items: center; gap: 12px;
+      flex-shrink: 0;
+    }
+
+    /* ── Bottom left panel (plan info) ───────────────────────────────────── */
+    .bottom-left-panel {
+      position: absolute;
+      bottom: 24px;
+      left: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 200px;
+      z-index: 5;
+    }
+
+    .plan-badge {
+      padding: 12px 16px;
+      background: rgba(139,92,246,0.12);
+      border: 1px solid rgba(139,92,246,0.3);
+      border-radius: 12px;
+      font-size: 13px;
+      color: #c4b5fd;
+      backdrop-filter: blur(10px);
+      transition: all 0.2s ease;
+    }
+    .plan-badge:hover {
+      background: rgba(139,92,246,0.15);
+      border-color: rgba(139,92,246,0.4);
+    }
+    .plan-name {
+      font-weight: 600;
+      font-size: 13px;
+      color: #c4b5fd;
+      letter-spacing: 0.3px;
+    }
+    .plan-sub {
+      color: rgba(139,92,246,0.6);
+      font-size: 11px;
+    }
+
+    .usage-bar-wrap { margin-top: 8px; }
+    .usage-bar-track {
+      height: 4px; background: rgba(255,255,255,0.1);
+      border-radius: 2px; overflow: hidden; margin-bottom: 4px;
+    }
+    .usage-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      border-radius: 2px; transition: width 0.4s ease;
+    }
+    .usage-bar-label { font-size: 10px; color: rgba(255,255,255,0.35); }
+
+    /* ── Toast Notification ───────────────────────────────────────────────────── */
+    .toast-container {
+      position: fixed;
+      top: 60px;
+      right: 24px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      pointer-events: none;
+    }
+    .toast {
+      background: rgba(20, 20, 30, 0.95);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: 12px;
+      padding: 14px 18px;
+      min-width: 280px;
+      max-width: 400px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      animation: toastSlideIn 0.3s ease-out;
+      pointer-events: auto;
+    }
+    .toast.success {
+      border-color: rgba(34, 197, 94, 0.4);
+      background: rgba(20, 30, 25, 0.95);
+    }
+    .toast.error {
+      border-color: rgba(239, 68, 68, 0.4);
+      background: rgba(30, 20, 20, 0.95);
+    }
+    .toast.info {
+      border-color: rgba(59, 130, 246, 0.4);
+      background: rgba(20, 25, 35, 0.95);
+    }
+    .toast-icon {
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+    .toast-content {
+      flex: 1;
+    }
+    .toast-title {
+      font-weight: 600;
+      font-size: 13px;
+      margin-bottom: 2px;
+      color: white;
+    }
+    .toast-message {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.7);
+      line-height: 1.4;
+    }
+    .toast-close {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.5);
+      cursor: pointer;
+      font-size: 18px;
+      padding: 0;
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .toast-close:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+    }
+    @keyframes toastSlideIn {
+      from {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+    @keyframes toastSlideOut {
+      from {
+        transform: translateX(0);
+        opacity: 1;
+      }
+      to {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+    }
+    .toast.hiding {
+      animation: toastSlideOut 0.3s ease-in forwards;
+    }
+
+    /* ── Loading Overlay ──────────────────────────────────────────────────────── */
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+    }
+    .loading-overlay.active {
+      display: flex;
+    }
+    .loading-content {
+      background: rgba(20, 20, 30, 0.95);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: 16px;
+      padding: 32px 40px;
+      text-align: center;
+      max-width: 320px;
+    }
+    .loading-spinner {
+      width: 48px;
+      height: 48px;
+      border: 3px solid rgba(139, 92, 246, 0.2);
+      border-top-color: #8b5cf6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .loading-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: white;
+    }
+    .loading-message {
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.6);
+      line-height: 1.5;
+    }
+
+    .upgrade-btn {
+      display: block; width: 100%;
+      padding: 8px;
+      background: linear-gradient(135deg, #f59e0b, #ef4444);
+      color: white; border: none; border-radius: 8px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      text-align: center; transition: opacity 0.2s;
+    }
+    .upgrade-btn:hover { opacity: 0.85; }
+
+    /* ── Delete Confirm Modal ─────────────────────────────────────────────────── */
+    .delete-modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 3000;
+    }
+    .delete-modal-overlay.active { display: flex; }
+    .delete-modal {
+      background: #1a1a2e;
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      border-radius: 14px;
+      padding: 28px 28px 24px;
+      width: 300px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      animation: modalIn 0.15s ease;
+    }
+    @keyframes modalIn {
+      from { opacity: 0; transform: scale(0.95) translateY(6px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .delete-modal-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .delete-modal-body {
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.5);
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+    .delete-modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    .delete-modal-cancel {
+      padding: 8px 18px;
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .delete-modal-cancel:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.25);
+      color: #fff;
+    }
+    .delete-modal-confirm {
+      padding: 8px 18px;
+      background: #dc2626;
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .delete-modal-confirm:hover { background: #b91c1c; }
+
+    .manage-subscription-btn {
+      display: block; width: 100%;
+      padding: 8px;
+      background: rgba(139, 92, 246, 0.12);
+      color: #a78bfa;
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    .manage-subscription-btn:hover {
+      background: rgba(139, 92, 246, 0.25);
+      border-color: rgba(139, 92, 246, 0.5);
+      color: #c4b5fd;
+    }
+
+    .signout-btn {
+      display: block; width: 100%;
+      padding: 7px;
+      background: transparent; color: rgba(255,255,255,0.3);
+      border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+      font-size: 11px; cursor: pointer; text-align: center;
+      transition: all 0.2s;
+    }
+    .signout-btn:hover { color: #fca5a5; border-color: rgba(239,68,68,0.3); }
+    .word-status {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-size: 13px; font-weight: 500; padding: 6px 12px;
+      border-radius: 20px; transition: all 0.3s;
+    }
+    .word-status.connected  { background: rgba(34,197,94,0.12); color: #86efac; border: 1px solid rgba(34,197,94,0.25); }
+    .word-status.disconnected { background: rgba(239,68,68,0.12); color: #fca5a5; border: 1px solid rgba(239,68,68,0.25); }
+    .word-status.checking   { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.4); border: 1px solid rgba(255,255,255,0.1); }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .connected .status-dot  { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.6); animation: pulse 2s infinite; }
+    .disconnected .status-dot { background: #ef4444; }
+    .checking .status-dot   { background: rgba(255,255,255,0.3); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    .launch-btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white; border: none; border-radius: 10px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: all 0.2s; box-shadow: 0 4px 14px rgba(102,126,234,0.35);
+      -webkit-app-region: no-drag;
+    }
+    .launch-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(102,126,234,0.5); }
+    .launch-btn:active { transform: translateY(0); }
+    .launch-icon { font-size: 16px; }
+
+    .sessions-area { flex: 1; overflow-y: auto; padding: 24px 24px 230px 24px; }
+    .sessions-area::-webkit-scrollbar { width: 5px; }
+    .sessions-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+    .sessions-title {
+      font-size: 12px; font-weight: 600;
+      color: rgba(255,255,255,0.3); text-transform: uppercase;
+      letter-spacing: 0.8px; margin-bottom: 16px;
+    }
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; height: 60%; gap: 12px;
+      color: rgba(255,255,255,0.25); text-align: center;
+    }
+    .empty-title { font-size: 15px; font-weight: 500; color: rgba(255,255,255,0.3); }
+    .empty-sub   { font-size: 13px; color: rgba(255,255,255,0.18); max-width: 240px; line-height: 1.5; }
+
+    .sessions-list {
+      display: flex; flex-direction: column; gap: 0;
+    }
+    .session-date-group {
+      margin-bottom: 24px;
+    }
+    .session-date-header {
+      font-size: 11px; font-weight: 600;
+      color: rgba(255,255,255,0.4); text-transform: uppercase;
+      letter-spacing: 0.5px; margin-bottom: 8px;
+      padding: 0 4px;
+    }
+    .session-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 12px; background: transparent;
+      border-radius: 6px; cursor: pointer;
+      transition: all 0.15s ease;
+      position: relative;
+    }
+    .session-item:hover {
+      background: rgba(255,255,255,0.08);
+    }
+    .session-item-content {
+      flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px;
+    }
+    .session-item-title {
+      font-size: 14px; font-weight: 400; color: rgba(255,255,255,0.9);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .session-item-meta {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; color: rgba(255,255,255,0.5);
+    }
+    .session-item-actions {
+      display: flex; align-items: center;
+      opacity: 0; transition: opacity 0.15s ease;
+    }
+    .session-item:hover .session-item-actions {
+      opacity: 1;
+    }
+    .session-delete-btn {
+      padding: 6px 12px; background: transparent;
+      border: none; border-radius: 4px;
+      color: rgba(255,255,255,0.6); font-size: 12px;
+      cursor: pointer; transition: all 0.15s ease;
+      font-weight: 400;
+    }
+    .session-delete-btn:hover {
+      background: rgba(239,68,68,0.15);
+      color: #fca5a5;
+    }
+
+    /* ── Login overlay ────────────────────────────────────────────────────── */
+    #loginOverlay {
+      position: fixed;
+      top: 44px; /* sit below the titlebar so window controls stay visible */
+      left: 0; right: 0; bottom: 0;
+      z-index: 200;
+      background: #0d0d12;
+      display: flex; flex-direction: column;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease;
+    }
+
+    .login-body {
+      flex: 1; display: flex;
+      align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    .login-card {
+      width: 100%; max-width: 340px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .login-logo-wrap { text-align: center; margin-bottom: 4px; }
+    .login-logo { width: 48px; height: 48px; object-fit: contain; }
+
+    .login-heading {
+      text-align: center;
+      font-size: 20px; font-weight: 700; color: white;
+    }
+    .login-sub {
+      text-align: center;
+      font-size: 13px; color: rgba(255,255,255,0.4);
+      margin-bottom: 4px; line-height: 1.5;
+    }
+
+    .login-input {
+      width: 100%; padding: 11px 14px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px; color: white; font-size: 14px;
+      outline: none; transition: border-color 0.2s;
+    }
+    .login-input::placeholder { color: rgba(255,255,255,0.25); }
+    .login-input:focus { border-color: rgba(139,92,246,0.7); }
+
+    .pw-wrap { position: relative; }
+    .pw-wrap .login-input { padding-right: 42px; }
+    .pw-eye {
+      position: absolute; right: 12px; top: 50%;
+      transform: translateY(-50%);
+      background: none; border: none;
+      color: rgba(255,255,255,0.3); cursor: pointer;
+      font-size: 16px; line-height: 1; padding: 0;
+    }
+    .pw-eye:hover { color: rgba(255,255,255,0.6); }
+
+    .login-btn {
+      width: 100%; padding: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white; border: none; border-radius: 10px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: all 0.2s; box-shadow: 0 4px 14px rgba(102,126,234,0.3);
+    }
+    .login-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(102,126,234,0.45); }
+    .login-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+    .divider {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 12px; color: rgba(255,255,255,0.2);
+    }
+    .divider::before, .divider::after {
+      content: ''; flex: 1;
+      height: 1px; background: rgba(255,255,255,0.1);
+    }
+
+    .google-btn {
+      width: 100%; padding: 11px 14px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px; color: white;
+      font-size: 14px; font-weight: 500;
+      cursor: pointer; transition: all 0.2s;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+    }
+    .google-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+    .google-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .google-icon { width: 18px; height: 18px; }
+
+    .login-err {
+      font-size: 13px; color: #fca5a5;
+      text-align: center; min-height: 18px;
+    }
+    .login-ok {
+      font-size: 13px; color: #86efac;
+      text-align: center;
+    }
+
+    .login-toggle {
+      text-align: center; font-size: 13px;
+      color: rgba(255,255,255,0.35);
+    }
+    .login-toggle span {
+      color: #a78bfa; cursor: pointer;
+      text-decoration: underline; text-underline-offset: 2px;
+    }
+    .login-toggle span:hover { color: #c4b5fd; }
+
+    .trial-note {
+      text-align: center; font-size: 11px;
+      color: rgba(255,255,255,0.2); line-height: 1.5;
+    }
+    .trial-note b { color: rgba(139,92,246,0.7); }
+  </style>
+</head>
+<body>
+
+  <!-- ── Titlebar (always visible) ─────────────────────────────────────── -->
+  <div class="titlebar">
+    <div class="titlebar-brand">
+      <img src="Alfred Official Logo.png" alt="" class="titlebar-logo" onerror="this.outerHTML='🎩'">
+      <span class="titlebar-name">Alfred</span>
+    </div>
+    <div class="titlebar-profile" id="titlebarProfile" style="display:none;">
+      <div class="profile-avatar" id="profileAvatar">👤</div>
+      <div class="profile-email" id="profileEmail"></div>
+    </div>
+    <div class="titlebar-controls">
+      <button class="win-btn minimize">−</button>
+      <button class="win-btn maximize">□</button>
+      <button class="win-btn close">✕</button>
+    </div>
+  </div>
+
+  <!-- ── Main dashboard (hidden until logged in) ───────────────────────── -->
+  <div class="layout" id="mainLayout" style="display:none;">
+
+    <div class="content">
+      <div class="content-topbar">
+        <div class="content-topbar-left">
+          <div class="word-status checking" id="wordStatus">
+            <div class="status-dot"></div>
+            <span id="wordStatusText">Checking Word...</span>
+          </div>
+        </div>
+        <div class="content-topbar-right">
+          <button class="launch-btn" id="launchBtn" onclick="launchAlfred()">
+            <span class="launch-icon">▶</span> Launch Alfred
+          </button>
+        </div>
+      </div>
+      <div class="sessions-area">
+        <div class="sessions-title">Recent Sessions</div>
+        <div id="sessionsList" class="sessions-list" style="display:none;"></div>
+        <div id="emptyState" class="empty-state">
+          <div class="empty-title">No sessions yet</div>
+          <div class="empty-sub">Click Launch Alfred to start. Your sessions will appear here.</div>
+        </div>
+      </div>
+      <div class="bottom-left-panel">
+        <div id="planBadge" class="plan-badge">
+          <div class="plan-name" id="planName">Free Trial</div>
+          <div class="plan-sub"  id="planSub">Loading...</div>
+          <div class="usage-bar-wrap" id="usageBarWrap" style="display:none;">
+            <div class="usage-bar-track">
+              <div class="usage-bar-fill" id="usageBarFill" style="width:0%"></div>
+            </div>
+            <div class="usage-bar-label" id="usageBarLabel"></div>
+          </div>
+        </div>
+        <button class="upgrade-btn" id="upgradeBtn" style="display:none;" onclick="openUpgrade()">⚡ Upgrade — RM 7.99/mo</button>
+        <button class="manage-subscription-btn" id="manageSubscriptionBtn" style="display:none;" onclick="openManageSubscription()">⚙️ Manage Subscription</button>
+        <button class="signout-btn" onclick="doSignOut()">Sign out</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Toast Container ─────────────────────────────────────────────────── -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- ── Loading Overlay ─────────────────────────────────────────────────── -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-title" id="loadingTitle">Processing Payment</div>
+      <div class="loading-message" id="loadingMessage">Please wait while we confirm your subscription...</div>
+    </div>
+  </div>
+
+  <!-- ── Delete Session Modal ──────────────────────────────────────────────── -->
+  <div class="delete-modal-overlay" id="deleteModalOverlay">
+    <div class="delete-modal">
+      <div class="delete-modal-title">Delete Session</div>
+      <div class="delete-modal-body">This will delete the session forever. This action cannot be undone.</div>
+      <div class="delete-modal-actions">
+        <button class="delete-modal-cancel" id="deleteModalCancel">Cancel</button>
+        <button class="delete-modal-confirm" id="deleteModalConfirm">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Login overlay ─────────────────────────────────────────────────── -->
+  <div id="loginOverlay">
+    <!-- Titlebar already shown above; just the body -->
+    <div class="login-body">
+      <div class="login-card">
+
+        <div class="login-logo-wrap">
+          <img src="Alfred Official Logo.png" class="login-logo" onerror="this.style.display='none'">
+        </div>
+
+        <div class="login-heading" id="loginHeading">Sign in</div>
+        <div class="login-sub" id="loginSub">Welcome back to Alfred.</div>
+
+        <!-- Email -->
+        <input type="email" id="inputEmail" class="login-input"
+          placeholder="Email address" autocomplete="email" />
+
+        <!-- Password -->
+        <div class="pw-wrap">
+          <input type="password" id="inputPassword" class="login-input"
+            placeholder="Password" autocomplete="current-password" />
+          <button class="pw-eye" tabindex="-1" onclick="togglePw()">👁</button>
+        </div>
+
+        <!-- Submit -->
+        <button class="login-btn" id="submitBtn" onclick="submitAuth()">Sign In</button>
+
+        <!-- Error / success message -->
+        <div class="login-err" id="authMsg"></div>
+
+        <!-- Divider -->
+        <div class="divider">or</div>
+
+        <!-- Google -->
+        <button class="google-btn" id="googleBtn" onclick="signInGoogle()">
+          <!-- Google 'G' icon -->
+          <svg class="google-icon" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+            <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+            <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+            <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+            <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+          </svg>
+          Continue with Google
+        </button>
+
+        <!-- Toggle sign in / sign up -->
+        <div class="login-toggle" id="loginToggle">
+          No account? <span onclick="switchMode()">Create one</span>
+        </div>
+
+        <div class="trial-note">
+          <b>Free trial: 30 messages.</b> Upgrade to Casual for unlimited at RM 7.99/month.
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── Window controls ─────────────────────────────────────────────────────
+    document.querySelector('.win-btn.minimize').onclick = () => window.dashboardAPI?.minimize();
+    document.querySelector('.win-btn.maximize').onclick = () => window.dashboardAPI?.toggleMaximize();
+    document.querySelector('.win-btn.close').onclick    = () => window.dashboardAPI?.close();
+
+    // ── Auth mode (sign-in vs sign-up) ──────────────────────────────────────
+    let mode = 'signin'; // 'signin' | 'signup'
+
+    function switchMode() {
+      mode = mode === 'signin' ? 'signup' : 'signin';
+      const isUp = mode === 'signup';
+      document.getElementById('loginHeading').textContent = isUp ? 'Create account' : 'Sign in';
+      document.getElementById('loginSub').textContent     = isUp ? 'Start your free 30-message trial.' : 'Welcome back to Alfred.';
+      document.getElementById('submitBtn').textContent    = isUp ? 'Create Account' : 'Sign In';
+      document.getElementById('loginToggle').innerHTML    = isUp
+        ? 'Already have an account? <span onclick="switchMode()">Sign in</span>'
+        : 'No account? <span onclick="switchMode()">Create one</span>';
+      document.getElementById('inputPassword').autocomplete = isUp ? 'new-password' : 'current-password';
+      clearMsg();
+    }
+
+    function togglePw() {
+      const f = document.getElementById('inputPassword');
+      f.type = f.type === 'password' ? 'text' : 'password';
+    }
+
+    function setMsg(text, isError = true) {
+      const el = document.getElementById('authMsg');
+      el.textContent  = text;
+      el.className    = isError ? 'login-err' : 'login-ok';
+    }
+    function clearMsg() { setMsg('', false); }
+
+    function setBusy(busy) {
+      document.getElementById('submitBtn').disabled = busy;
+      document.getElementById('googleBtn').disabled = busy;
+      document.getElementById('submitBtn').textContent = busy
+        ? (mode === 'signup' ? 'Creating...' : 'Signing in...')
+        : (mode === 'signup' ? 'Create Account' : 'Sign In');
+    }
+
+    // ── Submit (email + password) ────────────────────────────────────────────
+    async function submitAuth() {
+      const email = document.getElementById('inputEmail').value.trim();
+      const pass  = document.getElementById('inputPassword').value;
+
+      if (!email) { setMsg('Please enter your email.'); return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setMsg('Invalid email address.'); return; }
+      if (!pass)  { setMsg('Please enter a password.'); return; }
+      if (pass.length < 6) { setMsg('Password must be at least 6 characters.'); return; }
+
+      setBusy(true);
+      clearMsg();
+
+      try {
+        let result;
+        if (mode === 'signup') {
+          result = await window.dashboardAPI.signUp(email, pass);
+        } else {
+          result = await window.dashboardAPI.signIn(email, pass);
+        }
+        onLoginSuccess(result.user, result.profile);
+      } catch (err) {
+        setMsg(err.message || 'Something went wrong. Please try again.');
+        setBusy(false);
+      }
+    }
+
+    // ── Google sign-in ───────────────────────────────────────────────────────
+    async function signInGoogle() {
+      document.getElementById('googleBtn').disabled = true;
+      clearMsg();
+      setMsg('Opening Google sign-in…', false);
+      try {
+        await window.dashboardAPI.signInWithGoogle();
+        // Actual login completion handled by deep-link callback below
+      } catch (err) {
+        setMsg(err.message || 'Failed to open Google sign-in.');
+        document.getElementById('googleBtn').disabled = false;
+      }
+    }
+
+    // Enter key on any field
+    ['inputEmail','inputPassword'].forEach(id => {
+      document.getElementById(id).addEventListener('keydown', e => {
+        if (e.key === 'Enter') submitAuth();
+      });
+    });
+
+    // ── On successful login (any method) ────────────────────────────────────
+    function onLoginSuccess(user, profile) {
+      document.getElementById('loginOverlay').style.display = 'none';
+      document.getElementById('mainLayout').style.display   = 'flex';
+      updatePlanUI(profile);
+      updateProfilePhoto(user);
+      loadSessions(); // Load sessions after login
+      setBusy(false);
+    }
+
+    // ── Update profile photo in titlebar ─────────────────────────────────────
+    function updateProfilePhoto(user) {
+      if (!user) {
+        document.getElementById('titlebarProfile').style.display = 'none';
+        return;
+      }
+
+      const avatarEl = document.getElementById('profileAvatar');
+      const emailEl  = document.getElementById('profileEmail');
+      const profileEl = document.getElementById('titlebarProfile');
+
+      // Get avatar URL from user metadata (Google OAuth provides this)
+      const avatarUrl = user.user_metadata?.avatar_url || 
+                        user.user_metadata?.picture;
+
+      // Get email
+      const email = user.email || '';
+
+      // Update email display
+      emailEl.textContent = email;
+
+      // Update avatar
+      if (avatarUrl) {
+        avatarEl.innerHTML = `<img src="${avatarUrl}" alt="Profile" onerror="this.parentElement.textContent='${getInitials(email)}'">`;
+      } else {
+        // Fallback: show initials
+        avatarEl.textContent = getInitials(email);
+      }
+
+      profileEl.style.display = 'flex';
+    }
+
+    // ── Get initials from email ─────────────────────────────────────────────
+    function getInitials(email) {
+      if (!email) return '👤';
+      const parts = email.split('@')[0].split(/[._-]/);
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[1][0]).toUpperCase();
+      }
+      return email[0].toUpperCase();
+    }
+
+    // Deep-link / Google callback
+    window.dashboardAPI?.onAuthStateChanged(({ user, profile }) => {
+      if (user && document.getElementById('loginOverlay').style.display !== 'none') {
+        onLoginSuccess(user, profile);
+      } else if (profile) {
+        updatePlanUI(profile); // usage increment update
+      }
+      if (user) updateProfilePhoto(user);
+    });
+
+    // ── Check existing session on startup ───────────────────────────────────
+    window.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const user    = await window.dashboardAPI?.getUser();
+        const profile = user ? await window.dashboardAPI?.getProfile() : null;
+        if (user && profile) {
+          onLoginSuccess(user, profile);
+        } else if (user) {
+          // User exists but no profile yet — show profile photo anyway
+          updateProfilePhoto(user);
+        } else {
+          // No session — reveal the login overlay now (avoids flash for logged-in users)
+          const overlay = document.getElementById('loginOverlay');
+          overlay.style.opacity       = '1';
+          overlay.style.pointerEvents = 'auto';
+        }
+      } catch (e) {
+        console.error('Auth init error:', e);
+        // On error, still show login so user isn't stuck on a blank screen
+        const overlay = document.getElementById('loginOverlay');
+        overlay.style.opacity       = '1';
+        overlay.style.pointerEvents = 'auto';
+      }
+
+      checkWordStatus();
+      setInterval(checkWordStatus, 5000);
+      
+      // Load sessions if logged in
+      const currentUser = await window.dashboardAPI?.getUser();
+      if (currentUser) {
+        loadSessions();
+      }
+    });
+
+    // ── Refresh usage whenever dashboard gets focus (e.g. after Alfred closes or returning from browser) ──
+    window.addEventListener('focus', async () => {
+      try {
+        const user = await window.dashboardAPI?.getUser();
+        if (!user) return;
+        const profile = await window.dashboardAPI?.getProfile();
+        if (profile) {
+          const wasTrial = document.getElementById('planName').textContent.includes('Free Trial');
+          updatePlanUI(profile);
+          const isNowCasual = profile.subscription_status === 'active' || profile.plan === 'casual';
+          
+          // If user just upgraded (was trial, now casual), show success toast
+          if (wasTrial && isNowCasual && !document.getElementById('loadingOverlay').classList.contains('active')) {
+            showToast('success', 'Welcome to Casual Plan!', 'You now have unlimited messages.');
+          }
+        }
+        // Refresh sessions list
+        loadSessions();
+      } catch (e) {
+        // Silent — don't disrupt user if refresh fails
+      }
+    });
+
+    // ── Listen for session refresh events ──────────────────────────────────────
+    window.dashboardAPI?.onRefreshSessions(() => {
+      loadSessions();
+    });
+
+    // ── Toast Notification System ───────────────────────────────────────────────
+    function showToast(type, title, message, duration = 5000) {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      
+      const icons = {
+        success: '✅',
+        error: '❌',
+        info: 'ℹ️'
+      };
+      
+      toast.innerHTML = `
+        <div class="toast-icon">${icons[type] || 'ℹ️'}</div>
+        <div class="toast-content">
+          <div class="toast-title">${title}</div>
+          <div class="toast-message">${message}</div>
+        </div>
+        <button class="toast-close" onclick="this.parentElement.classList.add('hiding'); setTimeout(() => this.parentElement.remove(), 300)">×</button>
+      `;
+      
+      container.appendChild(toast);
+      
+      // Auto-remove after duration
+      setTimeout(() => {
+        toast.classList.add('hiding');
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
+      
+      return toast;
+    }
+
+    // ── Loading Overlay ─────────────────────────────────────────────────────────
+    function showLoading(title, message) {
+      const overlay = document.getElementById('loadingOverlay');
+      document.getElementById('loadingTitle').textContent = title;
+      document.getElementById('loadingMessage').textContent = message;
+      overlay.classList.add('active');
+    }
+    
+    function hideLoading() {
+      const overlay = document.getElementById('loadingOverlay');
+      overlay.classList.remove('active');
+    }
+
+    // ── Poll for Plan Update ────────────────────────────────────────────────────
+    async function pollForPlanUpdate(maxAttempts = 20, interval = 2000) {
+      let attempts = 0;
+      
+      const poll = async () => {
+        attempts++;
+        try {
+          const user = await window.dashboardAPI?.getUser();
+          if (!user) {
+            hideLoading();
+            showToast('error', 'Error', 'Please sign in to continue.');
+            return false;
+          }
+          
+          const profile = await window.dashboardAPI?.getProfile();
+          if (profile && (profile.subscription_status === 'active' || profile.plan === 'casual')) {
+            // Plan updated successfully!
+            updatePlanUI(profile);
+            hideLoading();
+            showToast('success', 'Payment Successful!', 'You now have access to the Casual Plan with unlimited messages.');
+            return true;
+          }
+          
+          // Still waiting for webhook
+          if (attempts < maxAttempts) {
+            document.getElementById('loadingMessage').textContent = 
+              `Waiting for confirmation... (${attempts}/${maxAttempts})`;
+            setTimeout(poll, interval);
+          } else {
+            // Timeout - webhook might be delayed
+            hideLoading();
+            showToast('info', 'Payment Received', 
+              'Your payment was successful, but the plan update is taking longer than expected. ' +
+              'Please refresh the dashboard in a few moments. If the issue persists, contact support.');
+            return false;
+          }
+        } catch (error) {
+          console.error('Error polling for plan update:', error);
+          if (attempts < maxAttempts) {
+            setTimeout(poll, interval);
+          } else {
+            hideLoading();
+            showToast('error', 'Update Error', 
+              'Unable to verify plan update. Please refresh the dashboard or contact support.');
+            return false;
+          }
+        }
+      };
+      
+      await poll();
+    }
+
+    // ── Listen for checkout success/cancel ──────────────────────────────────────
+    window.addEventListener('message', async (event) => {
+      if (event.data.type === 'checkout-success') {
+        // Show loading overlay
+        showLoading('Processing Payment', 'Please wait while we confirm your subscription...');
+        
+        // Start polling for plan update (webhook may take a few seconds)
+        await pollForPlanUpdate(20, 2000); // 20 attempts, 2 seconds apart = 40 seconds max
+      } else if (event.data.type === 'checkout-cancel') {
+        showToast('info', 'Checkout Canceled', 'You can upgrade anytime from the dashboard.');
+      }
+    });
+
+    // ── Plan / usage UI ─────────────────────────────────────────────────────
+    function updatePlanUI(profile) {
+      if (!profile) return;
+      // If subscription_status is "active", user has paid access (even if scheduled to cancel)
+      // This handles the case where plan might be "trial" but subscription is still active
+      const isCasual            = profile.subscription_status === 'active' || profile.plan === 'casual';
+      const CASUAL_MONTHLY_LIMIT = 250000;
+      const FREE_TRIAL_LIMIT     = 15000;
+
+      // Format token count to a readable number (e.g. 12,500)
+      function fmtTokens(n) { return Number(n).toLocaleString(); }
+
+      document.getElementById('planName').textContent = isCasual ? 'Casual Plan' : 'Free Trial';
+      const planSub = document.getElementById('planSub');
+      const barWrap = document.getElementById('usageBarWrap');
+
+      if (isCasual) {
+        // Monthly rolling usage for Casual
+        const rawUsed   = profile.monthly_tokens_used ?? 0;
+        const resetAt   = profile.monthly_tokens_reset_at ? new Date(profile.monthly_tokens_reset_at) : null;
+        const isResetDue = !resetAt || (Date.now() - resetAt.getTime()) > 30 * 24 * 60 * 60 * 1000;
+        const used      = isResetDue ? 0 : rawUsed;
+        const remaining = Math.max(0, CASUAL_MONTHLY_LIMIT - used);
+        const pct       = Math.min(100, Math.round((used / CASUAL_MONTHLY_LIMIT) * 100));
+        const nextReset = resetAt
+          ? new Date(resetAt.getTime() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })
+          : null;
+
+        planSub.style.display = 'block';
+        planSub.textContent   = `${fmtTokens(used)} / ${fmtTokens(CASUAL_MONTHLY_LIMIT)} tokens this month`;
+        barWrap.style.display = 'block';
+        document.getElementById('usageBarFill').style.width = pct + '%';
+        document.getElementById('usageBarLabel').textContent = remaining > 0
+          ? `${fmtTokens(remaining)} remaining${nextReset ? ' · resets ' + nextReset : ''}`
+          : `Monthly limit reached · resets ${nextReset ?? 'soon'}`;
+      } else {
+        // One-time token limit for Free Trial
+        const used      = profile.tokens_used ?? 0;
+        const remaining = Math.max(0, FREE_TRIAL_LIMIT - used);
+        const pct       = Math.min(100, Math.round((used / FREE_TRIAL_LIMIT) * 100));
+
+        planSub.style.display = 'block';
+        planSub.textContent   = `${fmtTokens(used)} / ${fmtTokens(FREE_TRIAL_LIMIT)} tokens used`;
+        barWrap.style.display = 'block';
+        document.getElementById('usageBarFill').style.width = pct + '%';
+        document.getElementById('usageBarLabel').textContent = remaining > 0
+          ? `${fmtTokens(remaining)} tokens remaining`
+          : 'Trial limit reached';
+      }
+
+      const upgradeBtn = document.getElementById('upgradeBtn');
+      const manageBtn  = document.getElementById('manageSubscriptionBtn');
+
+      // Show/hide upgrade button (trial only) — change style if trial is exhausted
+      if (isCasual) {
+        upgradeBtn.style.display = 'none';
+      } else {
+        const trialUsed      = profile.tokens_used ?? 0;
+        const trialRemaining = Math.max(0, 15000 - trialUsed);
+        upgradeBtn.style.display = 'block';
+        if (trialRemaining === 0) {
+          upgradeBtn.textContent        = '🔒 Upgrade to Continue';
+          upgradeBtn.style.background   = 'linear-gradient(135deg,#ef4444,#dc2626)';
+        }
+      }
+
+      // Show/hide manage subscription button (casual only)
+      manageBtn.style.display = isCasual ? 'block' : 'none';
+    }
+
+    // ── Sign out ─────────────────────────────────────────────────────────────
+    async function doSignOut() {
+      await window.dashboardAPI?.signOut();
+      document.getElementById('mainLayout').style.display   = 'none';
+      const overlay = document.getElementById('loginOverlay');
+      overlay.style.display       = 'flex';
+      overlay.style.opacity       = '1';
+      overlay.style.pointerEvents = 'auto';
+      document.getElementById('titlebarProfile').style.display = 'none';
+      mode = 'signin';
+      document.getElementById('loginHeading').textContent = 'Sign in';
+      document.getElementById('loginSub').textContent     = 'Welcome back to Alfred.';
+      document.getElementById('submitBtn').textContent    = 'Sign In';
+      document.getElementById('inputEmail').value    = '';
+      document.getElementById('inputPassword').value = '';
+      clearMsg();
+    }
+
+    // ── Launch Alfred ────────────────────────────────────────────────────────
+    function launchAlfred(sessionId = null) {
+      const btn = document.getElementById('launchBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="launch-icon">⏳</span> Launching...';
+      window.dashboardAPI?.launchAlfred(sessionId);
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<span class="launch-icon">▶</span> Launch Alfred';
+      }, 3000);
+    }
+
+    // ── Session Management ───────────────────────────────────────────────────
+    function formatDuration(seconds) {
+      if (!seconds || seconds < 60) return '0:00';
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const secs = seconds % 60;
+      if (hours > 0) {
+        return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      }
+      return `${minutes}:${String(secs).padStart(2, '0')}`;
+    }
+
+    function formatDateHeader(date) {
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      
+      const sessionDate = new Date(date);
+      const isToday = sessionDate.toDateString() === today.toDateString();
+      const isYesterday = sessionDate.toDateString() === yesterday.toDateString();
+      
+      if (isToday) return 'Today';
+      if (isYesterday) return 'Yesterday';
+      
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      
+      return `${days[sessionDate.getDay()]}, ${months[sessionDate.getMonth()]} ${sessionDate.getDate()}`;
+    }
+
+    function calculateSessionDuration(session) {
+      // Estimate duration based on message count
+      // Rough estimate: ~20 seconds per message exchange (user + AI response)
+      const msgCount = session.messageCount || 0;
+      if (msgCount === 0) return 0;
+      // Minimum 30 seconds, then ~10 seconds per message
+      return Math.max(30, msgCount * 10);
+    }
+
+    async function loadSessions() {
+      try {
+        const sessions = await window.dashboardAPI?.listSessions() || [];
+        const sessionsList = document.getElementById('sessionsList');
+        const emptyState = document.getElementById('emptyState');
+        
+        if (sessions.length === 0) {
+          sessionsList.style.display = 'none';
+          emptyState.style.display = 'flex';
+          return;
+        }
+        
+        sessionsList.style.display = 'flex';
+        emptyState.style.display = 'none';
+        sessionsList.innerHTML = '';
+        
+        // Group sessions by date
+        const groupedSessions = {};
+        sessions.forEach(session => {
+          const date = new Date(session.updatedAt || session.createdAt);
+          const dateKey = date.toDateString();
+          if (!groupedSessions[dateKey]) {
+            groupedSessions[dateKey] = [];
+          }
+          groupedSessions[dateKey].push(session);
+        });
+        
+        // Sort dates (most recent first)
+        const sortedDates = Object.keys(groupedSessions).sort((a, b) => {
+          return new Date(b) - new Date(a);
+        });
+        
+        // Render grouped sessions
+        sortedDates.forEach(dateKey => {
+          const dateGroup = document.createElement('div');
+          dateGroup.className = 'session-date-group';
+          
+          const dateHeader = document.createElement('div');
+          dateHeader.className = 'session-date-header';
+          dateHeader.textContent = formatDateHeader(dateKey);
+          dateGroup.appendChild(dateHeader);
+          
+          // Sort sessions within date group (most recent first)
+          const dateSessions = groupedSessions[dateKey].sort((a, b) => {
+            return new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt);
+          });
+          
+          dateSessions.forEach(session => {
+            const item = document.createElement('div');
+            item.className = 'session-item';
+            
+            item.innerHTML = `
+              <div class="session-item-content" onclick="launchAlfred('${session.id}')">
+                <div class="session-item-title">${escapeHtml(session.title || 'New Chat')}</div>
+              </div>
+              <div class="session-item-actions">
+                <button class="session-delete-btn" onclick="deleteSession('${session.id}', event)">Delete</button>
+              </div>
+            `;
+            
+            dateGroup.appendChild(item);
+          });
+          
+          sessionsList.appendChild(dateGroup);
+        });
+      } catch (error) {
+        console.error('Error loading sessions:', error);
+      }
+    }
+
+    function deleteSession(sessionId, event) {
+      event.stopPropagation();
+
+      const overlay  = document.getElementById('deleteModalOverlay');
+      const btnConfirm = document.getElementById('deleteModalConfirm');
+      const btnCancel  = document.getElementById('deleteModalCancel');
+
+      overlay.classList.add('active');
+
+      // Clone buttons to remove any previous listeners
+      const newConfirm = btnConfirm.cloneNode(true);
+      const newCancel  = btnCancel.cloneNode(true);
+      btnConfirm.replaceWith(newConfirm);
+      btnCancel.replaceWith(newCancel);
+
+      function closeModal() {
+        overlay.classList.remove('active');
+      }
+
+      newCancel.addEventListener('click', closeModal);
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeModal();
+      }, { once: true });
+
+      newConfirm.addEventListener('click', async () => {
+        closeModal();
+        try {
+          await window.dashboardAPI?.deleteSession(sessionId);
+          await loadSessions();
+        } catch (error) {
+          console.error('Error deleting session:', error);
+        }
+      });
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // ── Upgrade ──────────────────────────────────────────────────────────────
+    async function openUpgrade() {
+      try {
+        const btn = document.getElementById('upgradeBtn');
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '⏳ Loading...';
+        
+        const result = await window.dashboardAPI?.createCheckoutSession();
+        console.log('Checkout result:', result);
+        
+        if (result?.url && typeof result.url === 'string' && result.url.startsWith('http')) {
+          // Open Stripe Checkout in browser
+          window.dashboardAPI?.openExternal(result.url);
+          showToast('info', 'Checkout Opened', 'Complete your payment in the browser window.');
+          // Reset button after a moment (user is now in browser)
+          setTimeout(() => {
+            btn.disabled = false;
+            btn.textContent = originalText;
+          }, 1000);
+        } else {
+          console.error('Invalid checkout URL:', result);
+          showToast('error', 'Checkout Failed', result?.error || 'Invalid response. Please try again.');
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }
+      } catch (error) {
+        console.error('Checkout error:', error);
+        showToast('error', 'Checkout Error', error.message || 'Unknown error. Please try again.');
+        const btn = document.getElementById('upgradeBtn');
+        btn.disabled = false;
+        btn.textContent = '⚡ Upgrade — RM 7.99/mo';
+      }
+    }
+
+    // ── Manage Subscription ──────────────────────────────────────────────────────
+    async function openManageSubscription() {
+      try {
+        const btn = document.getElementById('manageSubscriptionBtn');
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '⏳ Loading...';
+        
+        const result = await window.dashboardAPI?.createPortalSession();
+        console.log('Portal result:', result);
+        
+        if (result?.url && typeof result.url === 'string' && result.url.startsWith('http')) {
+          // Open Stripe Customer Portal in browser
+          window.dashboardAPI?.openExternal(result.url);
+          showToast('info', 'Portal Opened', 'Manage your subscription in the browser window.');
+          // Reset button after a moment
+          setTimeout(() => {
+            btn.disabled = false;
+            btn.textContent = originalText;
+          }, 1000);
+        } else {
+          console.error('Invalid portal URL:', result);
+          showToast('error', 'Portal Failed', result?.error || 'Invalid response. Please try again.');
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }
+      } catch (error) {
+        console.error('Portal error:', error);
+        showToast('error', 'Portal Error', error.message || 'Unknown error. Please try again.');
+        const btn = document.getElementById('manageSubscriptionBtn');
+        btn.disabled = false;
+        btn.textContent = '⚙️ Manage Subscription';
+      }
+    }
+
+    // ── Word status ──────────────────────────────────────────────────────────
+    function checkWordStatus() {
+      window.dashboardAPI?.checkWordRunning().then(running => {
+        document.getElementById('wordStatus').className      = 'word-status ' + (running ? 'connected' : 'disconnected');
+        document.getElementById('wordStatusText').textContent = running ? 'Word Connected' : 'Word Not Open';
+      }).catch(() => {
+        document.getElementById('wordStatus').className      = 'word-status disconnected';
+        document.getElementById('wordStatusText').textContent = 'Word Not Open';
+      });
+    }
+  </script>
+</body>
+</html>
