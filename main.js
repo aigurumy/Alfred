@@ -9,6 +9,7 @@ const https = require('https');
 const http = require('http');
 const { URL } = require('url');
 const config = require('./config');
+const { autoUpdater } = require('electron-updater');
 
 // ── In-memory auth cache (populated by dashboard-preload via IPC) ─────────────
 // Supabase runs in the dashboard renderer/preload (uses Chromium fetch).
@@ -16,8 +17,8 @@ const config = require('./config');
 let cachedUser    = null;
 let cachedProfile = null;
 let pendingDeepLink = null; // Deep-link URL that arrived before the window was ready
-const FREE_TRIAL_TOKEN_LIMIT    = 15000;  // 15,000 tokens for free trial (one-time)
-const CASUAL_MONTHLY_TOKEN_LIMIT = 250000; // 250,000 tokens per month for Casual plan
+const FREE_TRIAL_TOKEN_LIMIT    = 1300;   // ~1,000 words free trial (one-time)
+const TOKENS_PER_WORD           = 1.3;    // Conversion ratio: ~1.3 tokens per word
 
 // API keys loaded from config.js (gitignored — never committed to GitHub)
 const DEFAULT_API_KEY      = config.OPENROUTER_API_KEY;
@@ -27,6 +28,7 @@ const UNDETECTABLE_API_KEY = config.UNDETECTABLE_API_KEY;
 let mainWindow;       // The floating chat overlay
 let dashboardWindow;  // The launcher dashboard
 let typingProcess = null; // Store reference to typing process for cancellation
+let authServer = null; // Local HTTP server for OAuth callbacks
 
 // ── Single-instance lock + deep-link (alfred://) ──────────────────────────────
 // Register alfred:// protocol for deep-link auth callbacks
@@ -185,7 +187,7 @@ process.on('uncaughtException', (error) => {
 // ── Dashboard window (primary launcher) ──────────────────────────────────────
 function createDashboardWindow() {
   const dashboardPreloadPath = path.join(__dirname, 'dashboard-preload.js');
-  const iconPath = path.join(__dirname, 'Alfred Official Logo.png');
+  const iconPath = path.join(__dirname, 'Alfred Official.ico');
 
   dashboardWindow = new BrowserWindow({
     width: DASHBOARD_SIZE.width,
@@ -242,7 +244,7 @@ function createDashboardWindow() {
 // ── Chat overlay window (launched from dashboard) ─────────────────────────────
 function createChatWindow(sessionId = null) {
   const preloadPath = path.join(__dirname, 'preload.js');
-  const iconPath = path.join(__dirname, 'Alfred Official Logo.png');
+  const iconPath = path.join(__dirname, 'Alfred Official.ico');
 
   mainWindow = new BrowserWindow({
     width: CHAT_SIZE.width,
@@ -318,10 +320,8 @@ function createChatWindow(sessionId = null) {
         mainWindow.webContents.send('load-session', session);
       }
     } else {
-      // Create new session and send to renderer
-      const userId = cachedUser?.id || null;
-      const newSession = createSession(userId);
-      mainWindow.webContents.send('load-session', newSession);
+      // Don't create session yet — wait until user sends first message
+      mainWindow.webContents.send('new-session');
     }
   });
 
@@ -590,9 +590,34 @@ async function searchWithSonar(query) {
 }
 
 // ── Humanize via Undetectable.ai ─────────────────────────────────────────────
+// Humanization is unlimited — gated only by word/token balance > 0
+
 ipcMain.handle('humanize-text', async (event, textToHumanize, originalQuery) => {
   try {
     console.log('[Humanize] Request received');
+
+    // ── Plan & balance check ─────────────────────────────────────────────────
+    if (!cachedProfile) {
+      throw new Error('Not logged in. Please sign in from the Alfred Dashboard.');
+    }
+    const isTrial = cachedProfile.plan === 'trial';
+    const isPaid  = cachedProfile.plan === 'paid';
+    if (!isTrial && !isPaid) {
+      throw new Error('UPGRADE_REQUIRED');
+    }
+    // Humanization is unlimited — only gated by having a token balance
+    if (isTrial) {
+      const tokensUsed = cachedProfile.tokens_used ?? 0;
+      if (tokensUsed >= FREE_TRIAL_TOKEN_LIMIT) {
+        throw new Error('NO_BALANCE');
+      }
+    } else if (isPaid) {
+      const totalTokens = (cachedProfile.subscription_tokens ?? 0) + (cachedProfile.pack_tokens ?? 0);
+      if (totalTokens <= 0) {
+        throw new Error('NO_BALANCE');
+      }
+    }
+    console.log('[Humanize] Balance check passed');
 
     // Step 1: Split off references section so they don't get rewritten
     const refPattern = /\n\n(References|Bibliography|Works Cited|Sources)\s*\n([\s\S]*)$/i;
@@ -676,6 +701,14 @@ ipcMain.handle('humanize-text', async (event, textToHumanize, originalQuery) => 
       req.end();
     });
 
+    // Catch Undetectable.ai account-level credit exhaustion gracefully
+    if (submitResponse.error) {
+      const errMsg = (submitResponse.error || '').toLowerCase();
+      if (errMsg.includes('credit') || errMsg.includes('insufficient') || errMsg.includes('quota')) {
+        throw new Error('PROVIDER_OUT_OF_CREDITS');
+      }
+      throw new Error('Undetectable.ai error: ' + submitResponse.error);
+    }
     if (!submitResponse.id) {
       throw new Error('No document ID returned from Undetectable.ai: ' + JSON.stringify(submitResponse));
     }
@@ -728,11 +761,13 @@ ipcMain.handle('humanize-text', async (event, textToHumanize, originalQuery) => 
     // Step 5: Reattach references unchanged
     const finalText = output + refsSection;
     console.log('[Humanize] Done');
+
     return finalText;
 
   } catch (error) {
     console.error('[Humanize] Error:', error.message);
-    throw new Error(`Humanize Error: ${error.message}`);
+    // Pass structured errors through cleanly — renderer.js will display friendly messages
+    throw new Error(error.message);
   }
 });
 
@@ -1033,30 +1068,70 @@ When using research context, prioritize academic and primary sources over aggreg
     }
 
     // STEP 4: Stream Claude's response — no tools, just write and format
-    console.log(needsResearch ? 'Calling Claude to format Sonar research (streaming)...' : 'Calling Claude directly (streaming)...');
+    // Auto-continuation: if the model hits the token limit mid-response,
+    // we automatically request a continuation (up to MAX_CONTINUATIONS times)
+    // so the user gets one seamless stream without having to ask "continue".
+    const MAX_CONTINUATIONS = 3;
+    const PER_REQUEST_MAX_TOKENS = 4096;
 
-    const stream = await openai.chat.completions.create({
-      model: 'anthropic/claude-sonnet-4.5',
-      messages: messages,
-      max_tokens: 2000,
-      temperature: 0.7,
-      stream: true,
-      stream_options: { include_usage: true }
-    });
+    console.log(needsResearch ? 'Calling Claude to format Sonar research (streaming)...' : 'Calling Claude directly (streaming)...');
 
     let streamedContent = '';
     let totalTokensUsed = 0;
-    for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta?.content;
-      if (delta) {
-        streamedContent += delta;
-        if (event && event.sender) {
-          event.sender.send('chat-stream', { type: 'chunk', content: delta });
+
+    for (let continuation = 0; continuation <= MAX_CONTINUATIONS; continuation++) {
+      // On continuation requests, append the partial response and ask to continue
+      if (continuation > 0) {
+        console.log(`[auto-continue] Continuation ${continuation}/${MAX_CONTINUATIONS} — response was truncated, requesting more...`);
+        messages.push({ role: 'assistant', content: streamedContent });
+        messages.push({ role: 'user', content: 'Continue exactly where you left off. Do not repeat any content already written.' });
+      }
+
+      const stream = await openai.chat.completions.create({
+        model: 'anthropic/claude-sonnet-4.5',
+        messages: messages,
+        max_tokens: PER_REQUEST_MAX_TOKENS,
+        temperature: 0.7,
+        stream: true,
+        stream_options: { include_usage: true }
+      });
+
+      let finishReason = null;
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta?.content;
+        if (delta) {
+          streamedContent += delta;
+          if (event && event.sender) {
+            event.sender.send('chat-stream', { type: 'chunk', content: delta });
+          }
+        }
+        // Capture finish_reason from the final chunk
+        if (chunk.choices[0]?.finish_reason) {
+          finishReason = chunk.choices[0].finish_reason;
+        }
+        // Capture token usage from the final chunk (OpenRouter returns this with include_usage)
+        if (chunk.usage && chunk.usage.total_tokens) {
+          totalTokensUsed += chunk.usage.total_tokens;
         }
       }
-      // Capture token usage from the final chunk (OpenRouter returns this with include_usage)
-      if (chunk.usage && chunk.usage.total_tokens) {
-        totalTokensUsed = chunk.usage.total_tokens;
+
+      // If the model stopped naturally (not due to token limit), we're done
+      if (finishReason !== 'length') {
+        console.log(`[auto-continue] Response complete (finish_reason: ${finishReason})`);
+        break;
+      }
+
+      // If we've exhausted continuations, stop
+      if (continuation === MAX_CONTINUATIONS) {
+        console.log(`[auto-continue] Hit max continuations (${MAX_CONTINUATIONS}), stopping`);
+        break;
+      }
+
+      // Remove the continuation messages before the next loop iteration rebuilds them
+      // (we want a clean assistant message with ALL content so far)
+      if (continuation > 0) {
+        messages.pop(); // remove "Continue..." user message
+        messages.pop(); // remove partial assistant message
       }
     }
 
@@ -1073,9 +1148,9 @@ When using research context, prioritize academic and primary sources over aggreg
       console.log(`[tokens] API reported ${totalTokensUsed} total tokens used`);
     }
 
-    // Increment token usage counter
+    // Deduct tokens from user's balance (trial: count up, paid: count down)
     if (dashboardWindow && !dashboardWindow.isDestroyed()) {
-      dashboardWindow.webContents.send('do-increment-tokens', totalTokensUsed);
+      dashboardWindow.webContents.send('do-deduct-tokens', totalTokensUsed);
     }
 
     return {
@@ -1092,6 +1167,8 @@ When using research context, prioritize academic and primary sources over aggreg
     throw new Error(`AI Error: ${errorMessage}`);
   }
 });
+
+ipcMain.handle('get-app-version', () => app.getVersion());
 
 ipcMain.handle('check-word-running', async () => {
   console.log('[Word Detection] Starting Word detection check...');
@@ -1510,8 +1587,16 @@ ipcMain.handle('process-uploaded-files', async (event, filePaths) => {
         const PDFParser = require('pdf2json');
         const { extractedText, pageCount } = await new Promise((resolve, reject) => {
           const pdfParser = new PDFParser();
-          pdfParser.on('pdfParser_dataError', errData => reject(new Error(String(errData.parserError))));
+          // Timeout to prevent hanging on problematic PDFs
+          const timeout = setTimeout(() => {
+            reject(new Error('PDF parsing timed out — the file may be corrupted, encrypted, or in an unsupported format'));
+          }, 30000); // 30 seconds
+          pdfParser.on('pdfParser_dataError', errData => {
+            clearTimeout(timeout);
+            reject(new Error(String(errData.parserError)));
+          });
           pdfParser.on('pdfParser_dataReady', pdfData => {
+            clearTimeout(timeout);
             try {
               const pages = pdfData.Pages || [];
 
@@ -1834,7 +1919,12 @@ Set wordApp = Nothing
 ipcMain.on('cache-auth-state', (event, { user, profile }) => {
   cachedUser    = user    || null;
   cachedProfile = profile || null;
-  console.log('[auth-cache] updated:', cachedUser?.email, '| plan:', cachedProfile?.plan, '| tokens_used:', cachedProfile?.tokens_used ?? 0, '| monthly_tokens_used:', cachedProfile?.monthly_tokens_used ?? 0);
+  console.log('[auth-cache] updated:', cachedUser?.email,
+    '| plan:', cachedProfile?.plan,
+    '| sub_tier:', cachedProfile?.subscription_tier ?? null,
+    '| sub_tokens:', cachedProfile?.subscription_tokens ?? 0,
+    '| pack_tokens:', cachedProfile?.pack_tokens ?? 0,
+    '| trial_used:', cachedProfile?.tokens_used ?? 0);
 });
 
 // Chat renderer asks: can this user send a message right now?
@@ -1842,28 +1932,30 @@ ipcMain.handle('auth-check-can-send', () => {
   if (!cachedUser || !cachedProfile) {
     return { canSend: false, reason: 'not-logged-in' };
   }
-  // If subscription_status is "active", user has paid access (even if scheduled to cancel)
-  // This handles the case where plan might be "trial" but subscription is still active
-  if (cachedProfile.subscription_status === 'active' || cachedProfile.plan === 'casual') {
-    const monthlyUsed   = cachedProfile.monthly_tokens_used ?? 0;
-    const resetAt       = cachedProfile.monthly_tokens_reset_at ? new Date(cachedProfile.monthly_tokens_reset_at) : null;
-    const isResetDue    = !resetAt || (Date.now() - resetAt.getTime()) > 30 * 24 * 60 * 60 * 1000;
-    const effectiveUsed = isResetDue ? 0 : monthlyUsed;
-    const remaining     = CASUAL_MONTHLY_TOKEN_LIMIT - effectiveUsed;
-    const nextReset     = resetAt ? new Date(resetAt.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString() : null;
 
-    if (remaining > 0) {
-      return { canSend: true, plan: 'casual', tokensUsed: effectiveUsed, remaining, resetAt: nextReset };
+  // Paid user — has subscription tokens, pack tokens, or both
+  if (cachedProfile.plan === 'paid') {
+    const subscriptionTokens = cachedProfile.subscription_tokens ?? 0;
+    const packTokens         = cachedProfile.pack_tokens ?? 0;
+    const totalTokens        = subscriptionTokens + packTokens;
+    const subscriptionTier   = cachedProfile.subscription_tier ?? null;
+    const canHumanize        = totalTokens > 0;
+
+    if (totalTokens > 0) {
+      return { canSend: true, plan: 'paid', subscriptionTier, subscriptionTokens, packTokens, totalTokens, canHumanize };
     }
-    return { canSend: false, reason: 'monthly-limit-reached', plan: 'casual', tokensUsed: effectiveUsed, remaining: 0, resetAt: nextReset };
+    return { canSend: false, reason: 'balance-empty', plan: 'paid', subscriptionTier, subscriptionTokens: 0, packTokens: 0, totalTokens: 0, canHumanize: false };
   }
-  // Token-based free trial
+
+  // Free trial user
   const tokensUsed = cachedProfile.tokens_used ?? 0;
-  const remaining = FREE_TRIAL_TOKEN_LIMIT - tokensUsed;
+  const remaining  = FREE_TRIAL_TOKEN_LIMIT - tokensUsed;
+  const canHumanize = remaining > 0;
+
   if (remaining > 0) {
-    return { canSend: true, plan: 'trial', tokensUsed, remaining };
+    return { canSend: true, plan: 'trial', tokensUsed, remaining, canHumanize };
   }
-  return { canSend: false, reason: 'trial-exhausted', plan: 'trial', tokensUsed, remaining: 0 };
+  return { canSend: false, reason: 'trial-exhausted', plan: 'trial', tokensUsed, remaining: 0, canHumanize: false };
 });
 
 // ── Session Management IPC Handlers ──────────────────────────────────────────
@@ -1892,12 +1984,73 @@ ipcMain.handle('session-list', async (event) => {
 });
 
 // ── App ready ─────────────────────────────────────────────────────────────────
+// ── Auto-updater setup ────────────────────────────────────────────────────────
+function setupAutoUpdater() {
+  // Don't check for updates in development mode
+  if (!app.isPackaged) {
+    console.log('[updater] Skipping update check — running in dev mode');
+    return;
+  }
+
+  // Provide GitHub token so updater can access the private repo
+  process.env.GH_TOKEN = config.GH_TOKEN;
+
+  autoUpdater.autoDownload    = true;  // Download silently in the background
+  autoUpdater.autoInstallOnAppQuit = true; // Install when user quits naturally
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[updater] Checking for update…');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[updater] Update available:', info.version);
+    if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+      dashboardWindow.webContents.send('update-available', info.version);
+    }
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    console.log('[updater] App is up to date');
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    const pct = Math.round(progress.percent);
+    console.log(`[updater] Downloading… ${pct}%`);
+    if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+      dashboardWindow.webContents.send('update-download-progress', pct);
+    }
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[updater] Update downloaded:', info.version);
+    if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+      dashboardWindow.webContents.send('update-downloaded', info.version);
+    }
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[updater] Error:', err.message);
+  });
+
+  // Check for updates 5 seconds after launch (give app time to fully load)
+  setTimeout(() => autoUpdater.checkForUpdates(), 5000);
+}
+
+// IPC: user clicked "Restart & Install" in the dashboard
+ipcMain.on('install-update', () => {
+  // Destroy all windows first, then wait 1s for the process to fully settle
+  // before handing off to the NSIS installer (prevents AVG/AV file-lock conflicts)
+  BrowserWindow.getAllWindows().forEach(w => w.destroy());
+  setTimeout(() => autoUpdater.quitAndInstall(false, true), 1000);
+});
+
 app.whenReady().then(() => {
   // Handle deep-link if the app was launched directly via alfred://
   const startUrl = process.argv.find(arg => arg.startsWith('alfred://'));
   if (startUrl) handleDeepLink(startUrl);
 
   createDashboardWindow();
+  setupAutoUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

@@ -73,12 +73,12 @@ serve(async (req) => {
     
     console.log("Customer ID:", profile.stripe_customer_id)
     
-    // Create Stripe Customer Portal session
-    // The return_url is where Stripe redirects after the customer finishes in the portal
-    // Since we can't use custom protocols, we'll use a generic URL and handle it via deep link
+    // Create Stripe Customer Portal session.
+    // return_url points at a bounce page on alfred.cool that redirects back to
+    // the desktop app via the alfred:// deep-link protocol.
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: profile.stripe_customer_id,
-      return_url: "https://example.com/portal-return", // Generic URL - we'll handle via deep link
+      return_url: "https://alfred.cool/portal/return",
     })
     
     console.log("Portal session created:", portalSession.id)

@@ -17,4 +17,7 @@ module.exports = {
   // Supabase project credentials (https://supabase.com → Project Settings → API)
   SUPABASE_URL:      'https://YOUR_PROJECT_ID.supabase.co',
   SUPABASE_ANON_KEY: 'YOUR_SUPABASE_ANON_KEY_HERE',
+
+  // GitHub Personal Access Token (repo scope) — for electron-updater private repo access
+  GH_TOKEN: 'ghp_YOUR_TOKEN_HERE',
 };

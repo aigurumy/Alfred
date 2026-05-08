@@ -12,7 +12,7 @@ const config = require('./config');
 const SUPABASE_URL      = config.SUPABASE_URL;
 const SUPABASE_ANON_KEY = config.SUPABASE_ANON_KEY;
 
-const FREE_TRIAL_TOKEN_LIMIT = 15000; // 15,000 tokens free trial limit
+const FREE_TRIAL_TOKEN_LIMIT = 1300; // ~1,000 words free trial limit
 
 // ── File-based session storage ────────────────────────────────────────────────
 // Lazy-initialised so we don't call app.getPath() before app is ready.
@@ -140,19 +140,25 @@ async function checkCanSend() {
   const profile = await getProfile();
   if (!profile) return { canSend: false, reason: 'no-profile' };
 
-  // If subscription_status is "active", user has paid access (even if scheduled to cancel)
-  // This handles the case where plan might be "trial" but subscription is still active
-  if (profile.subscription_status === 'active' || profile.plan === 'casual') {
-    return { canSend: true, plan: 'casual', tokensUsed: profile.tokens_used ?? 0, remaining: Infinity };
+  // Paid user (has subscription tokens, pack tokens, or both)
+  if (profile.plan === 'paid') {
+    const subscriptionTokens = profile.subscription_tokens ?? 0;
+    const packTokens         = profile.pack_tokens ?? 0;
+    const totalTokens        = subscriptionTokens + packTokens;
+    const subscriptionTier   = profile.subscription_tier ?? null;
+    if (totalTokens > 0) {
+      return { canSend: true, plan: 'paid', subscriptionTier, subscriptionTokens, packTokens, totalTokens, canHumanize: true };
+    }
+    return { canSend: false, reason: 'balance-empty', plan: 'paid', subscriptionTier, subscriptionTokens: 0, packTokens: 0, totalTokens: 0, canHumanize: false };
   }
 
   // Free trial — token-based
   const tokensUsed = profile.tokens_used ?? 0;
   const remaining = FREE_TRIAL_TOKEN_LIMIT - tokensUsed;
   if (remaining > 0) {
-    return { canSend: true, plan: 'trial', tokensUsed, remaining };
+    return { canSend: true, plan: 'trial', tokensUsed, remaining, canHumanize: true };
   }
-  return { canSend: false, reason: 'trial-exhausted', plan: 'trial', tokensUsed, remaining: 0 };
+  return { canSend: false, reason: 'trial-exhausted', plan: 'trial', tokensUsed, remaining: 0, canHumanize: false };
 }
 
 /** Atomically increments tokens_used for the current user by tokenCount. */

@@ -86,6 +86,13 @@ try {
       });
     },
 
+    // Listen for new-session event (fresh chat, no session created yet)
+    onNewSession: (callback) => {
+      ipcRenderer.on('new-session', () => {
+        callback();
+      });
+    },
+
     // Humanize text via Undetectable.ai
     humanizeText: async (text, originalQuery) => {
       return await ipcRenderer.invoke('humanize-text', text, originalQuery);

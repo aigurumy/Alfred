@@ -158,36 +158,38 @@ ipcRenderer.on('handle-deep-link', async (event, url) => {
   }
 });
 
-// ── Increment token count (main → preload) ────────────────────────────────────
-ipcRenderer.on('do-increment-tokens', async (event, tokenCount) => {
+// ── Deduct tokens (main → preload) ───────────────────────────────────────────
+ipcRenderer.on('do-deduct-tokens', async (event, tokenCount) => {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Fetch profile first to determine which counter to increment
-    const profile  = await fetchProfile(user.id);
-    const isCasual = profile?.subscription_status === 'active' || profile?.plan === 'casual';
+    const profile = await fetchProfile(user.id);
+    const isPaid  = profile?.plan === 'paid';
 
-    if (isCasual) {
-      // Casual users: increment monthly rolling counter (with auto-reset logic in RPC)
-      const { error: rpcError } = await supabase.rpc('increment_monthly_tokens', { user_id: user.id, token_count: tokenCount || 0 });
-      if (rpcError) console.error('[preload] increment monthly tokens RPC error:', rpcError.message);
+    if (isPaid) {
+      // Paid users: RPC drains subscription_tokens first, then pack_tokens
+      const { error: rpcError } = await supabase.rpc('deduct_tokens', { user_id: user.id, token_count: tokenCount || 0 });
+      if (rpcError) console.error('[preload] deduct tokens RPC error:', rpcError.message);
     } else {
-      // Trial users: increment one-time total counter
+      // Trial users: increment one-time total counter (counts up toward limit)
       const { error: rpcError } = await supabase.rpc('increment_tokens_used', { user_id: user.id, token_count: tokenCount || 0 });
       if (rpcError) console.error('[preload] increment tokens RPC error:', rpcError.message);
     }
 
     const updatedProfile = await fetchProfile(user.id);
     syncToMain(user, updatedProfile);
-    fireCallbacks({ user, profile: updatedProfile }); // Update usage bar in dashboard UI
+    fireCallbacks({ user, profile: updatedProfile });
   } catch (e) {
-    console.error('[preload] increment tokens error:', e.message);
+    console.error('[preload] deduct tokens error:', e.message);
   }
 });
 
 // ── Expose API to dashboard renderer ─────────────────────────────────────────
 contextBridge.exposeInMainWorld('dashboardAPI', {
+
+  // App version
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 
   // Window controls
   launchAlfred:   (sessionId) => ipcRenderer.send('launch-alfred', sessionId),
@@ -211,6 +213,12 @@ contextBridge.exposeInMainWorld('dashboardAPI', {
 
   // External links
   openExternal: (url) => ipcRenderer.send('open-external', url),
+
+  // ── Auto-updater events ─────────────────────────────────────────────────────
+  onUpdateAvailable:        (cb) => ipcRenderer.on('update-available',        (_e, v)   => cb(v)),
+  onUpdateDownloadProgress: (cb) => ipcRenderer.on('update-download-progress',(_e, pct) => cb(pct)),
+  onUpdateDownloaded:       (cb) => ipcRenderer.on('update-downloaded',       (_e, v)   => cb(v)),
+  installUpdate:            ()   => ipcRenderer.send('install-update'),
 
   // ── Auth (all handled here in preload — Chromium fetch) ────────────────────
 
@@ -291,37 +299,36 @@ contextBridge.exposeInMainWorld('dashboardAPI', {
     authCallbacks.push(callback);
   },
 
-  /** Create Stripe Checkout Session */
-  createCheckoutSession: async () => {
+  /**
+   * Create a Stripe Checkout Session.
+   *   type = 'pack'         → one-time top-up (tier: '1000' | '3000' | '5000' | '10000')
+   *   type = 'subscription' → monthly plan   (tier: 'lite' | 'standard' | 'pro')
+   * Returns { url } for new checkouts, or { tierChanged: true } when an existing
+   * subscription was modified in place.
+   */
+  createCheckoutSession: async (type, tier) => {
     try {
-      // Get and refresh session to ensure we have a valid token
       const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !currentSession) throw new Error('Not authenticated');
 
-      // Refresh the session to get a fresh token
       const { data: { session }, error: refreshError } = await supabase.auth.refreshSession(currentSession);
       if (refreshError || !session) {
         console.error('Failed to refresh session:', refreshError);
         throw new Error('Failed to refresh authentication');
       }
 
-      // Get user ID from session
       const userId = session.user?.id;
-      if (!userId) {
-        throw new Error('User ID not found in session');
-      }
+      if (!userId) throw new Error('User ID not found in session');
 
-      console.log('Calling checkout with user ID:', userId);
+      console.log('Calling checkout — user:', userId, 'type:', type, 'tier:', tier);
 
-      // Call Supabase Edge Function - pass user ID in body
-      // Use anon key as Bearer token to satisfy gateway (but function will verify userId server-side)
       const response = await fetch(`${SUPABASE_URL}/functions/v1/smart-processor`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ userId, type, tier }),
       });
 
       if (!response.ok) {
@@ -345,29 +352,26 @@ contextBridge.exposeInMainWorld('dashboardAPI', {
     }
   },
 
-  /** Create Stripe Customer Portal Session */
+  /**
+   * Create a Stripe Customer Portal session so the user can manage their
+   * subscription (change card, cancel, view invoices). Returns { url }.
+   */
   createPortalSession: async () => {
     try {
-      // Get and refresh session to ensure we have a valid token
       const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !currentSession) throw new Error('Not authenticated');
 
-      // Refresh the session to get a fresh token
       const { data: { session }, error: refreshError } = await supabase.auth.refreshSession(currentSession);
       if (refreshError || !session) {
         console.error('Failed to refresh session:', refreshError);
         throw new Error('Failed to refresh authentication');
       }
 
-      // Get user ID from session
       const userId = session.user?.id;
-      if (!userId) {
-        throw new Error('User ID not found in session');
-      }
+      if (!userId) throw new Error('User ID not found in session');
 
-      console.log('Calling portal with user ID:', userId);
+      console.log('Calling create-portal — user:', userId);
 
-      // Call Supabase Edge Function - pass user ID in body
       const response = await fetch(`${SUPABASE_URL}/functions/v1/create-portal`, {
         method: 'POST',
         headers: {
@@ -379,7 +383,7 @@ contextBridge.exposeInMainWorld('dashboardAPI', {
 
       if (!response.ok) {
         const errorText = await response.text();
-        let errorMessage = 'Failed to create portal session';
+        let errorMessage = 'Failed to open subscription portal';
         try {
           const errorJson = JSON.parse(errorText);
           errorMessage = errorJson.error || errorJson.message || errorMessage;
@@ -390,8 +394,7 @@ contextBridge.exposeInMainWorld('dashboardAPI', {
         throw new Error(errorMessage);
       }
 
-      const data = await response.json();
-      return data;
+      return await response.json();
     } catch (error) {
       console.error('Error creating portal session:', error);
       throw error;

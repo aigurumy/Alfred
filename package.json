@@ -1,13 +1,12 @@
 {
   "name": "alfred",
-  "version": "1.0.0",
+  "version": "1.0.6",
   "description": "Alfred - Your AI-powered desktop assistant that helps with writing by typing directly into Word",
   "main": "main.js",
   "scripts": {
     "dev": "electron .",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
-    "build:portable": "electron-builder --win portable",
     "build:dir": "electron-builder --win --dir",
     "start": "electron ."
   },
@@ -22,6 +21,7 @@
   "license": "MIT",
   "dependencies": {
     "@supabase/supabase-js": "^2.97.0",
+    "electron-updater": "^6.8.3",
     "mammoth": "^1.11.0",
     "openai": "^4.20.0",
     "pdf2json": "^4.0.2"
@@ -38,16 +38,25 @@
     "directories": {
       "output": "dist"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "aigurumy",
+        "repo": "Alfred",
+        "private": true
+      }
+    ],
     "files": [
       "main.js",
       "preload.js",
       "dashboard-preload.js",
       "supabase-client.js",
+      "config.js",
       "index.html",
       "dashboard.html",
       "renderer.js",
       "Alfred Official Logo.png",
-      "Alfred Official Logo.ico",
+      "Alfred Official.ico",
       "node_modules/**/*",
       "!node_modules/.cache/**/*",
       "!dist/**/*",
@@ -73,12 +82,6 @@
           "arch": [
             "x64"
           ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
         }
       ],
       "publisherName": "Alfred",
@@ -90,10 +93,10 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
-    },
-    "portable": {
-      "artifactName": "Alfred-Portable.exe"
+      "createStartMenuShortcut": true,
+      "artifactName": "Alfred.Setup.${version}.exe",
+      "perMachine": false,
+      "allowElevation": false
     }
   }
 }

@@ -5,6 +5,8 @@ let isLoadingSession = false; // Flag to prevent auto-save during session load
 let wordCheckInterval = null;
 let pendingContent = null; // Store content ready to be typed
 let lastUserQuery = ''; // Track the latest user query for humanization purpose classification
+let cachedPlan       = 'trial'; // Cached plan from last auth check — used to gate humanizer
+let cachedCanHumanize = true;  // Whether user has balance to humanize
 
 // ─── File Upload State ────────────────────────────────────────────────────────
 // Stores processed file objects ready to be sent with the next message
@@ -91,22 +93,46 @@ window.addEventListener('DOMContentLoaded', () => {
     
     // Set up session loading listener
     if (window.electronAPI.onLoadSession) {
-      window.electronAPI.onLoadSession((session) => {
+      window.electronAPI.onLoadSession(async (session) => {
         if (session) {
           currentSessionId = session.id;
           isLoadingSession = true;
           console.log('[Session] Loading session:', session.id, 'Messages:', session.messages?.length || 0);
+
+          // Refresh cached plan before rendering so humanize button shows correctly
+          if (window.electronAPI.checkCanSend) {
+            try {
+              const limitCheck = await window.electronAPI.checkCanSend();
+              if (limitCheck.plan) cachedPlan = limitCheck.plan;
+              if (limitCheck.canHumanize !== undefined) cachedCanHumanize = limitCheck.canHumanize;
+            } catch (e) {
+              console.warn('[Session] Could not refresh plan during load:', e);
+            }
+          }
+
           // Load messages from session
           if (session.messages && session.messages.length > 0) {
             conversationHistory = [];
-            session.messages.forEach(msg => {
+            // Find index of last AI message so we can re-attach action buttons to it
+            const lastAiIndex = session.messages.reduce((last, msg, idx) =>
+              msg.role === 'ai' ? idx : last, -1);
+            session.messages.forEach((msg, idx) => {
               console.log('[Session] Loading message:', msg.role, msg.content.substring(0, 50));
-              addMessage(msg.role, msg.content, false);
+              const showActions = idx === lastAiIndex && msg.role === 'ai';
+              addMessage(msg.role, msg.content, showActions);
             });
           }
           isLoadingSession = false;
           console.log('[Session] Loaded', conversationHistory.length, 'messages into conversationHistory');
         }
+      });
+    }
+
+    // New session — don't create until user sends first message
+    if (window.electronAPI.onNewSession) {
+      window.electronAPI.onNewSession(() => {
+        currentSessionId = null;
+        console.log('[Session] New session deferred until first message');
       });
     }
   } else {
@@ -258,9 +284,10 @@ function addMessage(role, content, showActions = false) {
           <button class="btn-small btn-type-word">
             Paste into Word
           </button>
-          <button class="btn-small btn-humanize">
-            ✨ Humanize
-          </button>
+          ${cachedCanHumanize
+            ? `<button class="btn-small btn-humanize">✨ Humanize</button>`
+            : `<button class="btn-small btn-humanize-locked" title="Buy tokens to unlock Humanizer">🔒 Humanize — Buy Tokens</button>`
+          }
         </div>
       ` : ''}
     </div>
@@ -545,10 +572,16 @@ function finalizeStreamingMessage() {
       typeBtn.onclick = (event) => typeContentIntoWord(event, contentForTyping);
 
       const humanizeBtn = document.createElement('button');
-      humanizeBtn.className = 'btn-small btn-humanize';
-      humanizeBtn.textContent = '✨ Humanize';
       const queryForHumanize = lastUserQuery;
-      humanizeBtn.onclick = () => window.humanizeMessage(humanizeBtn, messageDiv, contentForTyping, queryForHumanize);
+      if (cachedCanHumanize) {
+        humanizeBtn.className = 'btn-small btn-humanize';
+        humanizeBtn.textContent = '✨ Humanize';
+        humanizeBtn.onclick = () => window.humanizeMessage(humanizeBtn, messageDiv, contentForTyping, queryForHumanize);
+      } else {
+        humanizeBtn.className = 'btn-small btn-humanize-locked';
+        humanizeBtn.textContent = '🔒 Humanize — Buy Tokens';
+        humanizeBtn.title = 'Buy tokens to unlock Humanizer';
+      }
 
       actionsDiv.appendChild(typeBtn);
       actionsDiv.appendChild(humanizeBtn);
@@ -731,25 +764,37 @@ async function sendMessage() {
     return;
   }
 
+  // Create session on first message if not yet created
+  if (!currentSessionId && window.electronAPI.createSession) {
+    try {
+      const newSession = await window.electronAPI.createSession();
+      if (newSession) {
+        currentSessionId = newSession.id;
+        console.log('[Session] Created session on first message:', currentSessionId);
+      }
+    } catch (e) {
+      console.error('[Session] Failed to create session:', e);
+    }
+  }
+
   // ── Usage / auth check ──────────────────────────────────────────────────
   if (window.electronAPI && window.electronAPI.checkCanSend) {
     let limitCheck;
     try {
       limitCheck = await window.electronAPI.checkCanSend();
+      if (limitCheck.plan) cachedPlan = limitCheck.plan;
+      if (limitCheck.canHumanize !== undefined) cachedCanHumanize = limitCheck.canHumanize;
     } catch (e) {
-      limitCheck = { canSend: true }; // If check fails, allow (fail-open to avoid locking users out on network issues)
+      limitCheck = { canSend: true };
     }
 
     if (!limitCheck.canSend) {
       if (limitCheck.reason === 'not-logged-in') {
         addMessage('system', '🔒 You need to sign in to use Alfred. Open the Alfred Dashboard and log in.');
       } else if (limitCheck.reason === 'trial-exhausted') {
-        addMessage('system', '⚡ You\'ve used all your free trial tokens. Upgrade to Casual in the Alfred Dashboard for unlimited access — RM 7.99/month.');
-      } else if (limitCheck.reason === 'monthly-limit-reached') {
-        const resetDate = limitCheck.resetAt
-          ? new Date(limitCheck.resetAt).toLocaleDateString('en-MY', { day: 'numeric', month: 'long' })
-          : 'next month';
-        addMessage('system', `⏳ You've reached your monthly token limit. Your usage resets on ${resetDate}. Contact us if you need more.`);
+        addMessage('system', '⚡ You\'ve used all your free trial tokens. Buy a word pack in the Alfred Dashboard to keep writing.');
+      } else if (limitCheck.reason === 'balance-empty') {
+        addMessage('system', '⚡ You\'ve run out of words. Buy more in the Alfred Dashboard to keep writing.');
       } else {
         addMessage('system', '⚠ Unable to send message. Please check your account in the Alfred Dashboard.');
       }
@@ -758,19 +803,16 @@ async function sendMessage() {
       return;
     }
 
-    // Warn when trial is running low (less than 3,000 tokens remaining ≈ ~1-2 responses left)
-    if (limitCheck.plan === 'trial' && limitCheck.remaining <= 3000 && limitCheck.remaining > 0) {
+    // Warn when trial is running low
+    if (limitCheck.plan === 'trial' && limitCheck.remaining <= 300 && limitCheck.remaining > 0) {
       const remaining = limitCheck.remaining.toLocaleString();
-      addMessage('system', `⚠ Only ~${remaining} free tokens remaining. Upgrade in the Dashboard to keep going.`);
+      addMessage('system', `⚠ Only ~${remaining} free tokens remaining. Buy tokens in the Dashboard to keep going.`);
     }
 
-    // Warn casual users when running low on monthly tokens (~25,000 left ≈ ~5 responses)
-    if (limitCheck.plan === 'casual' && limitCheck.remaining <= 25000 && limitCheck.remaining > 0) {
-      const remaining = limitCheck.remaining.toLocaleString();
-      const resetDate = limitCheck.resetAt
-        ? new Date(limitCheck.resetAt).toLocaleDateString('en-MY', { day: 'numeric', month: 'long' })
-        : 'next month';
-      addMessage('system', `⚠ Running low — ~${remaining} tokens left this month. Resets on ${resetDate}.`);
+    // Warn paid users when total token balance is low
+    if (limitCheck.plan === 'paid' && limitCheck.totalTokens <= 500 && limitCheck.totalTokens > 0) {
+      const tokens = limitCheck.totalTokens.toLocaleString();
+      addMessage('system', `⚠ Running low — ~${tokens} tokens remaining. Buy more in the Dashboard.`);
     }
   }
   // ────────────────────────────────────────────────────────────────────────
@@ -916,15 +958,25 @@ async function humanizeMessage(btn, messageDiv, content, originalQuery) {
       contentEl.innerHTML = formatMessage(humanized);
     }
 
+    // Update conversationHistory so the humanized text persists on session reload
+    const msgIndex = conversationHistory.findIndex(m => m.role === 'ai' && m.content === content);
+    if (msgIndex !== -1) {
+      conversationHistory[msgIndex] = { role: 'ai', content: humanized };
+    }
+
+    // Save session with the updated content
+    if (currentSessionId && !isLoadingSession) {
+      saveCurrentSession();
+    }
+
     // Re-wire "Paste into Word" button with the new humanized text
     const typeBtn = messageDiv.querySelector('.btn-type-word');
     if (typeBtn) {
       typeBtn.onclick = (event) => typeContentIntoWord(event, humanized);
     }
 
-    // Re-wire this Humanize button so clicking again re-humanizes the new text
+    // Re-wire Humanize button so clicking again re-humanizes the new text
     btn.onclick = () => window.humanizeMessage(btn, messageDiv, humanized, originalQuery);
-
     btn.disabled = false;
     btn.textContent = '✨ Humanize';
 
@@ -932,7 +984,19 @@ async function humanizeMessage(btn, messageDiv, content, originalQuery) {
 
   } catch (error) {
     console.error('[Humanize] Error:', error);
-    addMessage('system', `⚠ Humanize failed: ${error.message}`);
+    const msg = error.message || '';
+
+    if (msg.includes('UPGRADE_REQUIRED')) {
+      addMessage('system', '🔒 Buy words from the Alfred Dashboard to use the Humanizer.');
+    } else if (msg.includes('NO_BALANCE')) {
+      addMessage('system', '⚡ You\'ve run out of words. Buy more in the Alfred Dashboard to humanize.');
+      cachedCanHumanize = false;
+    } else if (msg.includes('PROVIDER_OUT_OF_CREDITS')) {
+      addMessage('system', '⚠ Humanizer is temporarily unavailable. Please try again later.');
+    } else {
+      addMessage('system', `⚠ Humanize failed: ${msg}`);
+    }
+
     btn.disabled = false;
     btn.textContent = '✨ Humanize';
   }

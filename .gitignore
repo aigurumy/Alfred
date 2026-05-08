@@ -1,4 +1,4 @@
-node_modules/
+1node_modules/
 dist/
 build/
 dist-packager/
@@ -10,7 +10,5 @@ temp_script.vbs
 .env
 openai_key.txt
 desktop.ini
-package-lock.json
-
-# Sensitive API keys - never commit this file
+package-lock.json# Sensitive API keys — never commit this file
 config.js

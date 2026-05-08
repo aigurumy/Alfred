@@ -114,15 +114,16 @@
     }
 
     /* ── Bottom left panel (plan info) ───────────────────────────────────── */
+    /* Sits as a footer in the .content flex column. .sessions-area (flex:1) pushes
+       this to the bottom; align-self pins it to the left edge at fixed width. */
     .bottom-left-panel {
-      position: absolute;
-      bottom: 24px;
-      left: 24px;
+      align-self: flex-start;
+      flex-shrink: 0;
       display: flex;
       flex-direction: column;
       gap: 8px;
       width: 200px;
-      z-index: 5;
+      margin: 0 24px 24px 24px;
     }
 
     .plan-badge {
@@ -161,6 +162,7 @@
       border-radius: 2px; transition: width 0.4s ease;
     }
     .usage-bar-label { font-size: 10px; color: rgba(255,255,255,0.35); }
+
 
     /* ── Toast Notification ───────────────────────────────────────────────────── */
     .toast-container {
@@ -392,6 +394,182 @@
     }
     .delete-modal-confirm:hover { background: #b91c1c; }
 
+    .tier-option {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; padding: 12px 14px;
+      background: rgba(139, 92, 246, 0.08);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      border-radius: 8px; cursor: pointer;
+      transition: all 0.15s ease;
+      color: #e0e0e0; text-align: left;
+    }
+    .tier-option:hover {
+      background: rgba(139, 92, 246, 0.18);
+      border-color: rgba(139, 92, 246, 0.5);
+    }
+    .tier-words { font-weight: 700; font-size: 14px; min-width: 110px; }
+    .tier-desc  { flex: 1; font-size: 12px; color: #999; }
+    .tier-price { font-weight: 700; font-size: 14px; color: #a78bfa; }
+
+    /* ── Pricing / Tier Selection Modal (new) ────────────────────────────── */
+    .tier-modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 3000;
+    }
+    .tier-modal-overlay.active { display: flex; }
+
+    .tier-modal {
+      background: #14141f;
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      border-radius: 18px;
+      width: min(820px, 92vw);
+      max-height: 92vh;
+      overflow-y: auto;
+      padding: 24px 32px 20px;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+      animation: modalIn 0.2s ease;
+      /* Hide scrollbar even when content overflows — modal stays clean */
+      scrollbar-width: none;
+    }
+    .tier-modal::-webkit-scrollbar { display: none; }
+
+    .tier-modal-header { text-align: center; margin-bottom: 18px; }
+    .tier-modal-title  { font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+    .tier-modal-sub    { font-size: 13px; color: rgba(255,255,255,0.5); }
+
+    .tier-section { margin-bottom: 18px; }
+    .tier-section-label {
+      font-size: 11px; font-weight: 700;
+      color: rgba(255,255,255,0.4);
+      text-transform: uppercase; letter-spacing: 1px;
+      margin-bottom: 14px;
+    }
+
+    /* Subscription cards — 3-column grid */
+    .sub-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .sub-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      padding: 18px 18px 16px;
+      background: rgba(139, 92, 246, 0.06);
+      border: 1.5px solid rgba(139, 92, 246, 0.18);
+      border-radius: 14px;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      text-align: left;
+      color: #e0e0e0;
+      font-family: inherit;
+    }
+    .sub-card:hover:not(.current) {
+      background: rgba(139, 92, 246, 0.14);
+      border-color: rgba(139, 92, 246, 0.45);
+      transform: translateY(-2px);
+    }
+    .sub-card.featured {
+      background: linear-gradient(140deg, rgba(139, 92, 246, 0.18), rgba(102, 126, 234, 0.10));
+      border-color: rgba(139, 92, 246, 0.45);
+    }
+    .sub-card.featured:hover:not(.current) { border-color: rgba(167, 139, 250, 0.7); }
+    .sub-card.current {
+      background: rgba(255,255,255,0.04);
+      border-color: rgba(255,255,255,0.12);
+      cursor: default;
+      opacity: 0.7;
+    }
+    .sub-card.current .sub-badge { display: none; }
+
+    .sub-badge {
+      position: absolute;
+      top: -10px; right: 14px;
+      padding: 4px 10px;
+      background: linear-gradient(135deg, #8b5cf6, #6366f1);
+      color: #fff;
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 0.5px; text-transform: uppercase;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+    }
+    .sub-current-badge {
+      position: absolute;
+      top: -10px; right: 14px;
+      padding: 4px 10px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.75);
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 0.5px; text-transform: uppercase;
+      border-radius: 10px;
+    }
+    .sub-name   { font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+    .sub-tokens { font-size: 12px; color: rgba(255,255,255,0.55); margin-bottom: 12px; }
+    .sub-price  { font-size: 26px; font-weight: 700; color: #c4b5fd; line-height: 1; }
+    .sub-price-period {
+      font-size: 13px; font-weight: 500;
+      color: rgba(255,255,255,0.4);
+      margin-left: 2px;
+    }
+
+    /* Pack cards — 2x2 grid, simpler treatment */
+    .pack-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    .pack-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      color: #e0e0e0;
+      text-align: left;
+      font-family: inherit;
+    }
+    .pack-card:hover {
+      background: rgba(139, 92, 246, 0.10);
+      border-color: rgba(139, 92, 246, 0.3);
+    }
+    .pack-info   { display: flex; flex-direction: column; gap: 2px; }
+    .pack-tokens { font-size: 14px; font-weight: 700; color: #fff; }
+    .pack-desc   { font-size: 11px; color: rgba(255,255,255,0.45); }
+    .pack-price  { font-size: 15px; font-weight: 700; color: #a78bfa; white-space: nowrap; }
+
+    .tier-modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 4px;
+    }
+    .tier-modal-close {
+      padding: 10px 22px;
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 10px;
+      color: rgba(255,255,255,0.7);
+      font-size: 13px; font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tier-modal-close:hover {
+      background: rgba(255,255,255,0.06);
+      border-color: rgba(255,255,255,0.25);
+      color: #fff;
+    }
+
     .manage-subscription-btn {
       display: block; width: 100%;
       padding: 8px;
@@ -421,6 +599,13 @@
       transition: all 0.2s;
     }
     .signout-btn:hover { color: #fca5a5; border-color: rgba(239,68,68,0.3); }
+    .app-version {
+      font-size: 10px;
+      color: rgba(255,255,255,0.15);
+      text-align: center;
+      letter-spacing: 0.4px;
+      margin-top: 2px;
+    }
     .word-status {
       display: inline-flex; align-items: center; gap: 7px;
       font-size: 13px; font-weight: 500; padding: 6px 12px;
@@ -448,7 +633,7 @@
     .launch-btn:active { transform: translateY(0); }
     .launch-icon { font-size: 16px; }
 
-    .sessions-area { flex: 1; overflow-y: auto; padding: 24px 24px 230px 24px; }
+    .sessions-area { flex: 1; overflow-y: auto; padding: 24px; }
     .sessions-area::-webkit-scrollbar { width: 5px; }
     .sessions-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
     .sessions-title {
@@ -685,9 +870,10 @@
             <div class="usage-bar-label" id="usageBarLabel"></div>
           </div>
         </div>
-        <button class="upgrade-btn" id="upgradeBtn" style="display:none;" onclick="openUpgrade()">⚡ Upgrade — RM 7.99/mo</button>
-        <button class="manage-subscription-btn" id="manageSubscriptionBtn" style="display:none;" onclick="openManageSubscription()">⚙️ Manage Subscription</button>
+        <button class="upgrade-btn" id="upgradeBtn" style="display:none;" onclick="showTierSelection()">Get Tokens</button>
+        <button class="manage-subscription-btn" id="manageSubBtn" style="display:none;" onclick="manageSubscription()">Manage Subscription</button>
         <button class="signout-btn" onclick="doSignOut()">Sign out</button>
+        <div class="app-version" id="appVersion">v1.0.4</div>
       </div>
     </div>
   </div>
@@ -700,7 +886,7 @@
     <div class="loading-content">
       <div class="loading-spinner"></div>
       <div class="loading-title" id="loadingTitle">Processing Payment</div>
-      <div class="loading-message" id="loadingMessage">Please wait while we confirm your subscription...</div>
+      <div class="loading-message" id="loadingMessage">Please wait while we confirm your purchase...</div>
     </div>
   </div>
 
@@ -712,6 +898,78 @@
       <div class="delete-modal-actions">
         <button class="delete-modal-cancel" id="deleteModalCancel">Cancel</button>
         <button class="delete-modal-confirm" id="deleteModalConfirm">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Pricing / Tier Selection Modal ──────────────────────────────────── -->
+  <div class="tier-modal-overlay" id="tierModalOverlay">
+    <div class="tier-modal">
+      <div class="tier-modal-header">
+        <div class="tier-modal-title">Get More Tokens</div>
+        <div class="tier-modal-sub">Pick a monthly plan or grab a one-time pack — cancel anytime.</div>
+      </div>
+
+      <!-- Monthly subscriptions -->
+      <div class="tier-section">
+        <div class="tier-section-label">Monthly Subscriptions</div>
+        <div class="sub-grid">
+          <button class="sub-card" id="subCardLite" onclick="purchaseSubscription('lite')">
+            <div class="sub-name">Lite</div>
+            <div class="sub-tokens">3,000 tokens / month</div>
+            <div class="sub-price">RM 9.99<span class="sub-price-period">/mo</span></div>
+          </button>
+          <button class="sub-card featured" id="subCardStandard" onclick="purchaseSubscription('standard')">
+            <div class="sub-badge">Most Popular</div>
+            <div class="sub-name">Standard</div>
+            <div class="sub-tokens">8,000 tokens / month</div>
+            <div class="sub-price">RM 19.99<span class="sub-price-period">/mo</span></div>
+          </button>
+          <button class="sub-card" id="subCardPro" onclick="purchaseSubscription('pro')">
+            <div class="sub-name">Pro</div>
+            <div class="sub-tokens">20,000 tokens / month</div>
+            <div class="sub-price">RM 39.99<span class="sub-price-period">/mo</span></div>
+          </button>
+        </div>
+      </div>
+
+      <!-- One-time token packs -->
+      <div class="tier-section">
+        <div class="tier-section-label">One-Time Token Packs</div>
+        <div class="pack-grid">
+          <button class="pack-card" onclick="purchasePack('1000')">
+            <div class="pack-info">
+              <div class="pack-tokens">1,300 tokens</div>
+              <div class="pack-desc">Short assignments & summaries</div>
+            </div>
+            <div class="pack-price">RM 5.99</div>
+          </button>
+          <button class="pack-card" onclick="purchasePack('3000')">
+            <div class="pack-info">
+              <div class="pack-tokens">3,900 tokens</div>
+              <div class="pack-desc">Essays & literature reviews</div>
+            </div>
+            <div class="pack-price">RM 10.00</div>
+          </button>
+          <button class="pack-card" onclick="purchasePack('5000')">
+            <div class="pack-info">
+              <div class="pack-tokens">6,500 tokens</div>
+              <div class="pack-desc">Reports & research papers</div>
+            </div>
+            <div class="pack-price">RM 15.00</div>
+          </button>
+          <button class="pack-card" onclick="purchasePack('10000')">
+            <div class="pack-info">
+              <div class="pack-tokens">13,000 tokens</div>
+              <div class="pack-desc">Dissertations & large projects</div>
+            </div>
+            <div class="pack-price">RM 20.00</div>
+          </button>
+        </div>
+      </div>
+
+      <div class="tier-modal-footer">
+        <button class="tier-modal-close" onclick="closeTierModal()">Close</button>
       </div>
     </div>
   </div>
@@ -767,7 +1025,7 @@
         </div>
 
         <div class="trial-note">
-          <b>Free trial: 30 messages.</b> Upgrade to Casual for unlimited at RM 7.99/month.
+          <b>Free trial.</b> Subscribe or buy token packs to keep writing when your trial runs out.
         </div>
 
       </div>
@@ -787,7 +1045,7 @@
       mode = mode === 'signin' ? 'signup' : 'signin';
       const isUp = mode === 'signup';
       document.getElementById('loginHeading').textContent = isUp ? 'Create account' : 'Sign in';
-      document.getElementById('loginSub').textContent     = isUp ? 'Start your free 30-message trial.' : 'Welcome back to Alfred.';
+      document.getElementById('loginSub').textContent     = isUp ? 'Start with 1,000 free tokens.' : 'Welcome back to Alfred.';
       document.getElementById('submitBtn').textContent    = isUp ? 'Create Account' : 'Sign In';
       document.getElementById('loginToggle').innerHTML    = isUp
         ? 'Already have an account? <span onclick="switchMode()">Sign in</span>'
@@ -952,6 +1210,11 @@
 
       checkWordStatus();
       setInterval(checkWordStatus, 5000);
+
+      // Populate version from app
+      window.dashboardAPI?.getAppVersion().then(v => {
+        if (v) document.getElementById('appVersion').textContent = 'v' + v;
+      }).catch(() => {});
       
       // Load sessions if logged in
       const currentUser = await window.dashboardAPI?.getUser();
@@ -969,11 +1232,12 @@
         if (profile) {
           const wasTrial = document.getElementById('planName').textContent.includes('Free Trial');
           updatePlanUI(profile);
-          const isNowCasual = profile.subscription_status === 'active' || profile.plan === 'casual';
-          
-          // If user just upgraded (was trial, now casual), show success toast
-          if (wasTrial && isNowCasual && !document.getElementById('loadingOverlay').classList.contains('active')) {
-            showToast('success', 'Welcome to Casual Plan!', 'You now have unlimited messages.');
+          const isSubscriber = !!profile.subscription_tier && profile.subscription_status === 'active';
+
+          // If user just subscribed (was trial, now active sub), surface a toast
+          if (wasTrial && isSubscriber && !document.getElementById('loadingOverlay').classList.contains('active')) {
+            const label = TIER_LABEL[profile.subscription_tier] || 'paid';
+            showToast('success', `Welcome to the ${label} plan!`, 'Your subscription is active.');
           }
         }
         // Refresh sessions list
@@ -986,6 +1250,13 @@
     // ── Listen for session refresh events ──────────────────────────────────────
     window.dashboardAPI?.onRefreshSessions(() => {
       loadSessions();
+    });
+
+    // ── Auto-updater listeners ───────────────────────────────────────────────────
+
+    // Update downloaded — will auto-install next time the app opens
+    window.dashboardAPI?.onUpdateDownloaded((version) => {
+      showToast('info', 'Update Ready', `Alfred v${version} will install automatically next time you open the app.`, 6000);
     });
 
     // ── Toast Notification System ───────────────────────────────────────────────
@@ -1048,11 +1319,15 @@
           }
           
           const profile = await window.dashboardAPI?.getProfile();
-          if (profile && (profile.subscription_status === 'active' || profile.plan === 'casual')) {
-            // Plan updated successfully!
+          const totalTokens = (profile?.subscription_tokens ?? 0) + (profile?.pack_tokens ?? 0);
+          if (profile && (totalTokens > 0 || profile.subscription_tier || profile.plan === 'paid')) {
+            // Balance credited or subscription activated successfully
             updatePlanUI(profile);
             hideLoading();
-            showToast('success', 'Payment Successful!', 'You now have access to the Casual Plan with unlimited messages.');
+            const msg = profile.subscription_tier
+              ? `Welcome to the ${TIER_LABEL[profile.subscription_tier] || 'paid'} plan!`
+              : 'Your token balance has been credited. Happy writing!';
+            showToast('success', 'Payment Successful!', msg);
             return true;
           }
           
@@ -1089,7 +1364,7 @@
     window.addEventListener('message', async (event) => {
       if (event.data.type === 'checkout-success') {
         // Show loading overlay
-        showLoading('Processing Payment', 'Please wait while we confirm your subscription...');
+        showLoading('Processing Payment', 'Please wait while we confirm your purchase...');
         
         // Start polling for plan update (webhook may take a few seconds)
         await pollForPlanUpdate(20, 2000); // 20 attempts, 2 seconds apart = 40 seconds max
@@ -1099,73 +1374,88 @@
     });
 
     // ── Plan / usage UI ─────────────────────────────────────────────────────
+    const FREE_TRIAL_LIMIT = 1300;
+    const TIER_LABEL = { lite: 'Lite', standard: 'Standard', pro: 'Pro' };
+    const TIER_ALLOWANCE = { lite: 3000, standard: 8000, pro: 20000 };
+
     function updatePlanUI(profile) {
       if (!profile) return;
-      // If subscription_status is "active", user has paid access (even if scheduled to cancel)
-      // This handles the case where plan might be "trial" but subscription is still active
-      const isCasual            = profile.subscription_status === 'active' || profile.plan === 'casual';
-      const CASUAL_MONTHLY_LIMIT = 250000;
-      const FREE_TRIAL_LIMIT     = 15000;
 
-      // Format token count to a readable number (e.g. 12,500)
-      function fmtTokens(n) { return Number(n).toLocaleString(); }
+      const fmtNum = (n) => Number(n).toLocaleString();
 
-      document.getElementById('planName').textContent = isCasual ? 'Casual Plan' : 'Free Trial';
-      const planSub = document.getElementById('planSub');
-      const barWrap = document.getElementById('usageBarWrap');
+      const isPaid           = profile.plan === 'paid';
+      const tier             = profile.subscription_tier || null;
+      const subTokens        = profile.subscription_tokens ?? 0;
+      const packTokens       = profile.pack_tokens ?? 0;
+      const totalTokens      = subTokens + packTokens;
 
-      if (isCasual) {
-        // Monthly rolling usage for Casual
-        const rawUsed   = profile.monthly_tokens_used ?? 0;
-        const resetAt   = profile.monthly_tokens_reset_at ? new Date(profile.monthly_tokens_reset_at) : null;
-        const isResetDue = !resetAt || (Date.now() - resetAt.getTime()) > 30 * 24 * 60 * 60 * 1000;
-        const used      = isResetDue ? 0 : rawUsed;
-        const remaining = Math.max(0, CASUAL_MONTHLY_LIMIT - used);
-        const pct       = Math.min(100, Math.round((used / CASUAL_MONTHLY_LIMIT) * 100));
-        const nextReset = resetAt
-          ? new Date(resetAt.getTime() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })
-          : null;
+      const planNameEl  = document.getElementById('planName');
+      const planSub     = document.getElementById('planSub');
+      const barWrap     = document.getElementById('usageBarWrap');
+      const upgradeBtn  = document.getElementById('upgradeBtn');
+      const manageBtn   = document.getElementById('manageSubBtn');
 
-        planSub.style.display = 'block';
-        planSub.textContent   = `${fmtTokens(used)} / ${fmtTokens(CASUAL_MONTHLY_LIMIT)} tokens this month`;
+      // Reset transient styles each call
+      upgradeBtn.style.background = '';
+      barWrap.style.display = 'none';
+      manageBtn.style.display = 'none';
+
+      if (tier && TIER_LABEL[tier]) {
+        // Active subscriber (may also have pack tokens)
+        const allowance = TIER_ALLOWANCE[tier] || 0;
+        const pct       = allowance > 0 ? Math.min(100, Math.round(((allowance - subTokens) / allowance) * 100)) : 0;
+
+        planNameEl.textContent = `${TIER_LABEL[tier]} Plan`;
+        planSub.style.display  = 'block';
+        planSub.innerHTML      = packTokens > 0
+          ? `${fmtNum(subTokens)} / ${fmtNum(allowance)} tokens this month<br><span style="color:rgba(139,92,246,0.55);">+ ${fmtNum(packTokens)} pack tokens</span>`
+          : `${fmtNum(subTokens)} / ${fmtNum(allowance)} tokens this month`;
+
         barWrap.style.display = 'block';
         document.getElementById('usageBarFill').style.width = pct + '%';
-        document.getElementById('usageBarLabel').textContent = remaining > 0
-          ? `${fmtTokens(remaining)} remaining${nextReset ? ' · resets ' + nextReset : ''}`
-          : `Monthly limit reached · resets ${nextReset ?? 'soon'}`;
-      } else {
-        // One-time token limit for Free Trial
-        const used      = profile.tokens_used ?? 0;
-        const remaining = Math.max(0, FREE_TRIAL_LIMIT - used);
-        const pct       = Math.min(100, Math.round((used / FREE_TRIAL_LIMIT) * 100));
+        document.getElementById('usageBarLabel').textContent = subTokens > 0
+          ? `${fmtNum(subTokens)} tokens remaining`
+          : (packTokens > 0 ? 'Subscription used — drawing from pack tokens' : 'Out of tokens — renews on next billing cycle');
 
-        planSub.style.display = 'block';
-        planSub.textContent   = `${fmtTokens(used)} / ${fmtTokens(FREE_TRIAL_LIMIT)} tokens used`;
-        barWrap.style.display = 'block';
-        document.getElementById('usageBarFill').style.width = pct + '%';
-        document.getElementById('usageBarLabel').textContent = remaining > 0
-          ? `${fmtTokens(remaining)} tokens remaining`
-          : 'Trial limit reached';
-      }
-
-      const upgradeBtn = document.getElementById('upgradeBtn');
-      const manageBtn  = document.getElementById('manageSubscriptionBtn');
-
-      // Show/hide upgrade button (trial only) — change style if trial is exhausted
-      if (isCasual) {
-        upgradeBtn.style.display = 'none';
-      } else {
-        const trialUsed      = profile.tokens_used ?? 0;
-        const trialRemaining = Math.max(0, 15000 - trialUsed);
         upgradeBtn.style.display = 'block';
-        if (trialRemaining === 0) {
-          upgradeBtn.textContent        = '🔒 Upgrade to Continue';
-          upgradeBtn.style.background   = 'linear-gradient(135deg,#ef4444,#dc2626)';
+        upgradeBtn.textContent   = 'Get More Tokens';
+        manageBtn.style.display  = 'block';
+      } else if (isPaid) {
+        // Pack-only paid user (no subscription)
+        planNameEl.textContent = 'Pay-Per-Use';
+        planSub.style.display  = 'block';
+        planSub.textContent    = `${fmtNum(packTokens)} tokens remaining`;
+
+        upgradeBtn.style.display = 'block';
+        if (packTokens <= 0) {
+          upgradeBtn.style.background = 'linear-gradient(135deg,#ef4444,#dc2626)';
+          upgradeBtn.textContent      = 'Out of Tokens — Get More';
+        } else {
+          upgradeBtn.textContent = 'Get More Tokens';
+        }
+      } else {
+        // Free trial
+        const tokensUsed = profile.tokens_used ?? 0;
+        const tokensLeft = Math.max(0, FREE_TRIAL_LIMIT - tokensUsed);
+        const pct        = Math.min(100, Math.round((tokensUsed / FREE_TRIAL_LIMIT) * 100));
+
+        planNameEl.textContent = 'Free Trial';
+        planSub.style.display  = 'block';
+        planSub.textContent    = `${fmtNum(tokensUsed)} / ${fmtNum(FREE_TRIAL_LIMIT)} tokens used`;
+        barWrap.style.display  = 'block';
+        document.getElementById('usageBarFill').style.width = pct + '%';
+        document.getElementById('usageBarLabel').textContent = tokensLeft > 0
+          ? `${fmtNum(tokensLeft)} tokens remaining`
+          : 'Trial limit reached';
+
+        upgradeBtn.style.display = 'block';
+        if (tokensLeft === 0) {
+          upgradeBtn.textContent      = 'Get Tokens to Continue';
+          upgradeBtn.style.background = 'linear-gradient(135deg,#ef4444,#dc2626)';
+        } else {
+          upgradeBtn.textContent = 'Get Tokens';
         }
       }
-
-      // Show/hide manage subscription button (casual only)
-      manageBtn.style.display = isCasual ? 'block' : 'none';
     }
 
     // ── Sign out ─────────────────────────────────────────────────────────────
@@ -1348,28 +1638,86 @@
       return div.innerHTML;
     }
 
-    // ── Upgrade ──────────────────────────────────────────────────────────────
-    async function openUpgrade() {
+    // ── Tier Selection & Purchase ───────────────────────────────────────────────
+    function showTierSelection() {
+      const overlay = document.getElementById('tierModalOverlay');
+
+      // Reset any previously-marked current plan first so reopening is clean
+      ['Lite', 'Standard', 'Pro'].forEach(name => {
+        const card = document.getElementById('subCard' + name);
+        if (!card) return;
+        card.classList.remove('current');
+        const stale = card.querySelector('.sub-current-badge');
+        if (stale) stale.remove();
+      });
+
+      overlay.classList.add('active');
+
+      // Then mark the user's active plan (if any) asynchronously
+      window.dashboardAPI?.getProfile().then(profile => {
+        const tier = (profile?.subscription_tier && profile?.subscription_status === 'active')
+          ? profile.subscription_tier
+          : null;
+        if (!tier) return;
+        const card = document.getElementById('subCard' + tier.charAt(0).toUpperCase() + tier.slice(1));
+        if (!card) return;
+        card.classList.add('current');
+        const badge = document.createElement('div');
+        badge.className = 'sub-current-badge';
+        badge.textContent = 'Current Plan';
+        card.appendChild(badge);
+      }).catch(() => {});
+    }
+
+    function closeTierModal() {
+      document.getElementById('tierModalOverlay').classList.remove('active');
+    }
+
+    function purchasePack(tier) {
+      return startCheckout('pack', tier);
+    }
+
+    function purchaseSubscription(tier) {
+      const card = document.getElementById('subCard' + tier.charAt(0).toUpperCase() + tier.slice(1));
+      if (card?.classList.contains('current')) {
+        showToast('info', 'Already Active', 'You\'re already on this plan. Use Manage Subscription to make changes.');
+        return;
+      }
+      return startCheckout('subscription', tier);
+    }
+
+    async function startCheckout(type, tier) {
+      closeTierModal();
+      const btn = document.getElementById('upgradeBtn');
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳ Loading...';
+
       try {
-        const btn = document.getElementById('upgradeBtn');
-        const originalText = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = '⏳ Loading...';
-        
-        const result = await window.dashboardAPI?.createCheckoutSession();
+        const result = await window.dashboardAPI?.createCheckoutSession(type, tier);
         console.log('Checkout result:', result);
-        
+
+        // Tier change applied directly to existing subscription (no checkout needed)
+        if (result?.tierChanged) {
+          showToast('success', 'Plan Updated', 'Your subscription tier has been changed.');
+          setTimeout(async () => {
+            const profile = await window.dashboardAPI?.getProfile();
+            if (profile) updatePlanUI(profile);
+            btn.disabled = false;
+            btn.textContent = originalText;
+          }, 1500);
+          return;
+        }
+
         if (result?.url && typeof result.url === 'string' && result.url.startsWith('http')) {
-          // Open Stripe Checkout in browser
           window.dashboardAPI?.openExternal(result.url);
           showToast('info', 'Checkout Opened', 'Complete your payment in the browser window.');
-          // Reset button after a moment (user is now in browser)
           setTimeout(() => {
             btn.disabled = false;
             btn.textContent = originalText;
           }, 1000);
         } else {
-          console.error('Invalid checkout URL:', result);
+          console.error('Invalid checkout response:', result);
           showToast('error', 'Checkout Failed', result?.error || 'Invalid response. Please try again.');
           btn.disabled = false;
           btn.textContent = originalText;
@@ -1377,44 +1725,33 @@
       } catch (error) {
         console.error('Checkout error:', error);
         showToast('error', 'Checkout Error', error.message || 'Unknown error. Please try again.');
-        const btn = document.getElementById('upgradeBtn');
         btn.disabled = false;
-        btn.textContent = '⚡ Upgrade — RM 7.99/mo';
+        btn.textContent = originalText;
       }
     }
 
-    // ── Manage Subscription ──────────────────────────────────────────────────────
-    async function openManageSubscription() {
+    async function manageSubscription() {
+      const btn = document.getElementById('manageSubBtn');
+      const originalText = btn?.textContent || 'Manage Subscription';
+      if (btn) { btn.disabled = true; btn.textContent = 'Opening...'; }
+
       try {
-        const btn = document.getElementById('manageSubscriptionBtn');
-        const originalText = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = '⏳ Loading...';
-        
         const result = await window.dashboardAPI?.createPortalSession();
-        console.log('Portal result:', result);
-        
+
         if (result?.url && typeof result.url === 'string' && result.url.startsWith('http')) {
-          // Open Stripe Customer Portal in browser
           window.dashboardAPI?.openExternal(result.url);
           showToast('info', 'Portal Opened', 'Manage your subscription in the browser window.');
-          // Reset button after a moment
-          setTimeout(() => {
-            btn.disabled = false;
-            btn.textContent = originalText;
-          }, 1000);
         } else {
-          console.error('Invalid portal URL:', result);
-          showToast('error', 'Portal Failed', result?.error || 'Invalid response. Please try again.');
-          btn.disabled = false;
-          btn.textContent = originalText;
+          console.error('Invalid portal response:', result);
+          showToast('error', 'Could Not Open Portal', result?.error || 'Invalid response. Please try again.');
         }
       } catch (error) {
         console.error('Portal error:', error);
         showToast('error', 'Portal Error', error.message || 'Unknown error. Please try again.');
-        const btn = document.getElementById('manageSubscriptionBtn');
-        btn.disabled = false;
-        btn.textContent = '⚙️ Manage Subscription';
+      } finally {
+        if (btn) {
+          setTimeout(() => { btn.disabled = false; btn.textContent = originalText; }, 1000);
+        }
       }
     }
 
